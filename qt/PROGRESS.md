@@ -8,10 +8,18 @@ Plan: [PLAN.md](PLAN.md). Update this file at the end of each working session.
 |---|---|
 | 1. Core package | Done (2026-11-16) |
 | 2. Device backends | Done (2026-11-16); checked on macOS with an Atmel DFU keyboard |
-| 3. Main window | Not started — next |
-| 4. HID console and key tester | Not started |
+| 3. Main window | Done (2026-11-16); flash, Auto-Flash, drag-and-drop and settings verified on macOS |
+| 4. HID console and key tester | Not started — next |
 | 5. Ubuntu work | Not started |
 | 6. CI and docs | Not started |
+
+## Running the app
+
+From `qt/`:
+
+```sh
+uv run qmk-toolbox            # optionally followed by a firmware file or a qmk:// link
+```
 
 ## Running the tests
 
@@ -21,7 +29,7 @@ From `qt/`:
 uv run pytest
 ```
 
-`uv` creates `.venv/` and installs the dependencies (pyusb, pyserial, pytest) on first use. The tests need no hardware. pyusb needs libusb at run time (`brew install libusb` on macOS, already present on Ubuntu).
+`uv` creates `.venv/` and installs the dependencies (PySide6-Essentials, pyusb, pyserial, pytest) on first use. The tests need no hardware and no display (the UI tests use Qt's offscreen platform). pyusb needs libusb at run time (`brew install libusb` on macOS, already present on Ubuntu).
 
 ## Step 1 — core package (done)
 
@@ -69,14 +77,53 @@ Known limitations:
 - **Install hints** name apt/Homebrew packages for avrdude, dfu-programmer, dfu-util and teensy_loader_cli only; the package names are from memory and unverified. The other four tools get a generic message.
 - **`FlashContext.avrdude_conf` is unused** now that flashers come from the system; kept until step 5 settles whether any platform needs it.
 
-## Notes for step 3
+## Step 3 — main window (done)
 
-- Call `UsbListener.poll()` from a `QTimer` on the UI thread; run flash/reset/EEPROM on a worker thread and marshal `output_received` back with a signal (it is called from reader threads).
-- `poll()` raises `UsbBackendError` when libusb is missing; show it once rather than every second.
-- Pass EEPROM files as `environment.data_file("reset.eep")` etc.
-- Do not poll-and-flash re-entrantly: with auto-flash, a connect callback should queue the flash rather than run it inside `poll()`.
+Added:
+
+- `ui/main_window.py` — the window: "Local file" row (editable recent-files box, Open, MCU picker), coloured log, Auto-Flash checkbox, Exit DFU / Clear EEPROM / Flash buttons, and File / Tools / Help menus mirroring the macOS app (shortcuts Ctrl+O, Ctrl+Shift+F/E/X).
+- `ui/log_text_view.py` — log colours and prefixes copied from the macOS app, light and dark; the log is re-coloured if the system theme changes.
+- `ui/microcontroller_selector.py`, `app.py`, `__main__.py`, and a `qmk-toolbox` entry point.
+- `firmware.py` — firmware file check, `qmk:` link unwrapping, download to the Downloads folder.
+
+Behaviour:
+
+- Devices are polled every 500 ms from a timer on the UI thread.
+- Flash / reset / EEPROM run on a worker thread, one operation at a time; the buttons are disabled meanwhile and the window refuses to close until the operation ends.
+- With Auto-Flash on, a bootloader connecting starts a flash; one that connects during a flash is flashed afterwards. The buttons are disabled while Auto-Flash is on.
+- Remembered between runs (QSettings, organisation "QMK"): MCU, Show All Devices, recent files (10), window geometry. Auto-Flash is not remembered, as in the macOS app.
+- A firmware file can be chosen with Open, dropped on the window, picked from the recent list, or passed on the command line.
+
+Verified on macOS: 85 unit tests pass, including headless UI tests that drive the window with a fake USB backend and fake flasher (button states, flash / reset / EEPROM command lines, locking during a flash, auto-flash, settings round trip, qmk link handling). The real window was launched once and a screenshot checked: layout and dark-theme colours are correct.
+
+Verified on hardware (2026-11-16, macOS): a real flash from the UI. A mini-mighty-mouse (ATmega16U2, Atmel DFU 03EB:2FEF) was detected, erased, flashed and validated with Homebrew's dfu-programmer, with all output shown in the log. The final `dfu-programmer reset` hung after the device had already left DFU; the 5 s timeout killed it, logged "Reset sent, but dfu-programmer did not return within 5 s; stopped it." and the operation ended with "Flash complete". So the hang does occur with Homebrew's 1.1.0 build, and the timeout handles it.
+
+Auto-Flash was also verified on the same device: with the box ticked, entering bootloader mode started the flash by itself, and it completed. That time `dfu-programmer reset` returned normally, so the hang is intermittent, as expected.
+
+Drag and drop of a firmware file onto the window worked, and after relaunching the app the file and MCU were remembered.
+
+Not verified by hand: the Exit DFU button (the same reset path was verified with `watch_devices.py --reset` and at the end of each flash).
+
+Also not verified: light theme and theme switching by eye; anything on Linux; clicking through the menus and dialogs by hand (file dialog, About).
+
+Deliberate differences from the macOS app:
+
+- **`qmk:` downloads are restricted** to http/https links to .hex/.bin files, and an existing file of the same name in Downloads is replaced (the macOS app fails in that case).
+- **Buttons are disabled while Auto-Flash is on.**
+- **No "QMK Toolbox Help" menu item, Key Tester or HID Console entries yet** (the latter two arrive with step 4).
+
+Not done yet, and where it belongs:
+
+- Registering the app for .hex/.bin files and the `qmk:` URL scheme — packaging, step 5 (`.desktop` file).
+- Single-instance behaviour (the Windows app forwards a second launch to the running one) — not planned yet; decide in step 5.
+
+## Notes for step 4
+
+- `hidapi` is the planned library; console devices are usage page `0xFF31`, usage `0x0074`.
+- HID reads must not block the UI thread: either a reader thread per device emitting through a signal (as `_message` does), or non-blocking reads from the existing poll timer.
+- Add the Key Tester and HID Console items to the Tools menu.
 
 ## Background
 
 - **Flashers come from the system, not the repo** (decided 2026-11-16, see PLAN.md). The binaries in `macos/QMK Toolbox/Resources/` are x86_64-only and do not run on the arm64 development Mac without Rosetta anyway. Homebrew there has `dfu-util` and `dfu-programmer` 1.1.0; the other six tools are not installed. The primary test device uses Atmel DFU, so `dfu-programmer` is the one that matters first.
-- **`dfu-programmer reset` can hang on macOS 27.** After the chip leaves DFU the process often never returns, although the reset worked. The installed native QMK Toolbox on the development Mac is patched with a wrapper script that kills `reset`/`launch` after 5 s and reports success. Handled here in step 2 with a timeout. Homebrew's 1.1.0 build did not hang in two resets on 2026-11-16.
+- **`dfu-programmer reset` can hang on macOS 27.** After the chip leaves DFU the process often never returns, although the reset worked. The installed native QMK Toolbox on the development Mac is patched with a wrapper script that kills `reset`/`launch` after 5 s and reports success. Handled here in step 2 with a timeout. Homebrew's 1.1.0 build did not hang in two standalone resets, but did hang on the reset after a real flash (2026-11-16), where the timeout recovered as intended.
