@@ -28,6 +28,8 @@ from ..usb.bootloader.bootloader_device import BootloaderDevice
 from ..usb.usb_backend import UsbBackendError
 from ..usb.usb_device import UsbDevice
 from ..usb.usb_listener import UsbListener
+from .hid_console_window import HidConsoleWindow
+from .key_tester_window import KeyTesterWindow
 from .log_text_view import LogTextView
 from .microcontroller_selector import MicrocontrollerSelector
 
@@ -73,6 +75,8 @@ class MainWindow(QMainWindow):
         self._busy = False
         self._auto_flash_pending = False
         self._worker: threading.Thread | None = None
+        self.key_tester_window: KeyTesterWindow | None = None
+        self.hid_console_window: HidConsoleWindow | None = None
 
         self.setWindowTitle("QMK Toolbox")
         self.setAcceptDrops(True)
@@ -192,6 +196,10 @@ class MainWindow(QMainWindow):
         self.show_all_devices_action.toggled.connect(
             lambda enabled: self.settings.setValue("ShowAllDevices", enabled)
         )
+
+        tools_menu.addSeparator()
+        tools_menu.addAction("&Key Tester", self.show_key_tester)
+        tools_menu.addAction("&HID Console", self.show_hid_console)
 
         help_menu = self.menuBar().addMenu("&Help")
         about_action = help_menu.addAction("&About QMK Toolbox", self._show_about)
@@ -422,6 +430,18 @@ class MainWindow(QMainWindow):
         self.filepath_box.setEditText("")
         self._rebuild_recent_menu()
 
+    # MARK: Other windows
+
+    def show_key_tester(self) -> None:
+        if self.key_tester_window is None:
+            self.key_tester_window = KeyTesterWindow()
+        _bring_to_front(self.key_tester_window)
+
+    def show_hid_console(self) -> None:
+        if self.hid_console_window is None:
+            self.hid_console_window = HidConsoleWindow()
+        _bring_to_front(self.hid_console_window)
+
     # MARK: Window events
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
@@ -442,6 +462,10 @@ class MainWindow(QMainWindow):
         self._poll_timer.stop()
         self.listener.stop()
         self.settings.setValue("Geometry", self.saveGeometry())
+        # They are separate top-level windows; closing the main one ends the app.
+        for window in (self.key_tester_window, self.hid_console_window):
+            if window is not None:
+                window.close()
         event.accept()
 
     def _show_log_menu(self, position) -> None:
@@ -458,3 +482,9 @@ class MainWindow(QMainWindow):
             "<p>A flashing/debug utility for devices running QMK Firmware.</p>"
             '<p><a href="https://qmk.fm/toolbox">https://qmk.fm/toolbox</a></p>',
         )
+
+
+def _bring_to_front(window: QWidget) -> None:
+    window.show()
+    window.raise_()
+    window.activateWindow()

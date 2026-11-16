@@ -304,3 +304,18 @@ def test_qmk_link_is_downloaded_and_selected(ui, tmp_path, monkeypatch):
     monkeypatch.setattr(firmware, "download_firmware", failing_download)
     ui.window.set_file_path("qmk://https://example.com/setup.exe")
     wait_until(lambda: "Could not download file" in ui.log())
+
+
+def test_tools_menu_opens_the_other_windows(ui):
+    ui.window.show_key_tester()
+    ui.window.show_hid_console()
+    key_tester, hid_console = ui.window.key_tester_window, ui.window.hid_console_window
+    hid_console._poll_timer.stop()
+    hid_console._read_timer.stop()
+    assert key_tester.isVisible() and hid_console.isVisible()
+
+    ui.window.show_key_tester()  # reuses the window
+    assert ui.window.key_tester_window is key_tester
+
+    ui.window.close()
+    assert not key_tester.isVisible() and not hid_console.isVisible()

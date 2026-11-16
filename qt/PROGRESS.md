@@ -9,8 +9,8 @@ Plan: [PLAN.md](PLAN.md). Update this file at the end of each working session.
 | 1. Core package | Done (2026-11-16) |
 | 2. Device backends | Done (2026-11-16); checked on macOS with an Atmel DFU keyboard |
 | 3. Main window | Done (2026-11-16); flash, Auto-Flash, drag-and-drop and settings verified on macOS |
-| 4. HID console and key tester | Not started — next |
-| 5. Ubuntu work | Not started |
+| 4. HID console and key tester | Done (2026-11-16); both verified on macOS with a real keyboard |
+| 5. Ubuntu work | Not started — next |
 | 6. CI and docs | Not started |
 
 ## Running the app
@@ -29,7 +29,7 @@ From `qt/`:
 uv run pytest
 ```
 
-`uv` creates `.venv/` and installs the dependencies (PySide6-Essentials, pyusb, pyserial, pytest) on first use. The tests need no hardware and no display (the UI tests use Qt's offscreen platform). pyusb needs libusb at run time (`brew install libusb` on macOS, already present on Ubuntu).
+`uv` creates `.venv/` and installs the dependencies (PySide6-Essentials, hidapi, pyusb, pyserial, pytest) on first use. The tests need no hardware and no display (the UI tests use Qt's offscreen platform). pyusb needs libusb at run time (`brew install libusb` on macOS, already present on Ubuntu).
 
 ## Step 1 — core package (done)
 
@@ -102,7 +102,7 @@ Auto-Flash was also verified on the same device: with the box ticked, entering b
 
 Drag and drop of a firmware file onto the window worked, and after relaunching the app the file and MCU were remembered.
 
-Not verified by hand: the Exit DFU button (the same reset path was verified with `watch_devices.py --reset` and at the end of each flash).
+The Exit DFU button was checked by hand as well.
 
 Also not verified: light theme and theme switching by eye; anything on Linux; clicking through the menus and dialogs by hand (file dialog, About).
 
@@ -110,18 +110,52 @@ Deliberate differences from the macOS app:
 
 - **`qmk:` downloads are restricted** to http/https links to .hex/.bin files, and an existing file of the same name in Downloads is replaced (the macOS app fails in that case).
 - **Buttons are disabled while Auto-Flash is on.**
-- **No "QMK Toolbox Help" menu item, Key Tester or HID Console entries yet** (the latter two arrive with step 4).
+- **No "QMK Toolbox Help" menu item.**
 
 Not done yet, and where it belongs:
 
 - Registering the app for .hex/.bin files and the `qmk:` URL scheme — packaging, step 5 (`.desktop` file).
 - Single-instance behaviour (the Windows app forwards a second launch to the running one) — not planned yet; decide in step 5.
 
-## Notes for step 4
+## Step 4 — HID console and key tester (done)
 
-- `hidapi` is the planned library; console devices are usage page `0xFF31`, usage `0x0074`.
-- HID reads must not block the UI thread: either a reader thread per device emitting through a signal (as `_message` does), or non-blocking reads from the existing poll timer.
-- Add the Key Tester and HID Console items to the Tools menu.
+Added:
+
+- `hid/hid_device.py`, `hid/hid_backend.py`, `hid/hid_listener.py` — console (usage page `0xFF31`, usage `0x0074`) and raw HID (`0xFF60` / `0x0061`) devices via hidapi. Console devices are opened non-blocking; raw devices are only reported. Like the USB listener there are no threads: `poll()` finds devices, `read()` drains pending reports and assembles them into lines.
+- `ui/hid_console_window.py` — device picker with "(All connected devices)", coloured log, Clear. Listens only while the window is open (polls every second, reads every 20 ms).
+- `ui/key_layout.py`, `ui/key_tester_window.py` — a full-size ANSI keyboard with the extra ISO key, drawn in one widget. Keys light yellow while held and stay green once pressed. Keys are identified by physical position: scan codes on Linux (evdev code + 8), virtual key codes on macOS. The window takes every key for itself (Tab, Esc, shortcuts) and shows the native codes of the last key.
+- Tools menu: Key Tester and HID Console.
+
+Verified on macOS: 103 unit tests pass (console line assembly including split UTF-8, two keyboards, a device that stops answering or cannot be opened, key lookup tables, key tester state and painting). Both windows were launched and checked by screenshot. hidapi enumerated the Mac's 37 HID interfaces in about 4 ms and correctly found no console devices.
+
+Verified on hardware (2026-11-16, macOS):
+
+- **Key tester:** every key on the mini-mighty-kbd-wireless was detected at the correct position, modifiers included.
+- **HID console:** console-enabled firmware was flashed to the keyboard with this app, and the HID Console window then showed "HID console connected: Dimitrix LLC mini-mighty-kbd-wireless (04D8:FFF1:0100)" followed by the keyboard's live output (`keyboard_report: ...` lines), one line per message.
+
+Not verified: two console devices at once and raw HID devices on real hardware (unit tests only).
+
+Also not verified: anything on Linux — the evdev scan-code table, and the `hidraw` module preference (see below).
+
+Deliberate differences from the macOS app:
+
+- **The key tester draws a PC-style keyboard** (PrtSc/ScrLk/Pause, Ins, Num Lock; modifiers labelled Ctrl/GUI/Alt) rather than a Mac one. On macOS F13–F15, Help and Clear light up the keys in those positions. fn, F16–F19 and keypad `=` have no key drawn and only update the labels.
+- **Held keys are released when the window loses focus**, since their key-up events go elsewhere.
+
+Possible improvement, raised 2026-11-16 and deferred: on macOS, label the key tester's modifiers Option and Command instead of Alt and GUI.
+
+Known limitations:
+
+- **On Linux the `hidraw` module is tried before `hid`.** With cython-hidapi the `hid` module uses libusb there, which detaches the keyboard from the kernel while the console is open. Whether Ubuntu's `python3-hid` package ships `hidraw` is unverified; check in step 5.
+- **Reading a console on Linux needs permission on `/dev/hidraw*`** — part of the udev rules in step 5.
+- **The key tester does nothing on Windows** (no scan-code table).
+
+## Notes for step 5
+
+- udev rules: bootloader USB devices (for the flashers) and hidraw access for console devices. QMK ships `50-qmk.rules`; start from that.
+- Check on Ubuntu 26.04: apt names for the Python modules (PySide6, pyusb, pyserial, hidapi) and for the flashers; that `hidraw` imports; Wayland behaviour of the key tester.
+- `.desktop` file: MIME types for .hex/.bin and the `x-scheme-handler/qmk` URL scheme.
+- Decide on single-instance behaviour.
 
 ## Background
 
