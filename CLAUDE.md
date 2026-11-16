@@ -14,9 +14,13 @@ It is **two independent native apps that are kept at feature parity by hand**, n
 
 Almost any behavioural change (new bootloader, new VID/PID, changed flasher arguments, log text) must be made in both `macos/` and `windows/`. The two trees mirror each other file-for-file (e.g. `USB/Bootloader/CaterinaDevice.swift` ↔ `Usb/Bootloader/CaterinaDevice.cs`).
 
+## Python/Qt port (in progress, `qt-port` branch)
+
+`qt/` is a third implementation (Python + PySide6) aimed at Linux, also runnable on macOS. It is a self-contained project that mirrors the Swift app's structure and does not touch `macos/` or `windows/`. Before working on it, read `qt/PLAN.md` (goal, decisions, steps) and `qt/PROGRESS.md` (what is done, what has and has not been verified, notes for the next step), and update `PROGRESS.md` at the end of each session. From `qt/`: `uv run pytest` runs its tests, `uv run qmk-toolbox` runs the app.
+
 ## Build
 
-There are no tests and no linter. CI (`.github/workflows/build.yml`) only builds and packages.
+There are no tests and no linter for the native apps. CI (`.github/workflows/build.yml`) only builds and packages.
 
 macOS (from `macos/`):
 
