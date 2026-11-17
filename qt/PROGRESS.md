@@ -10,8 +10,8 @@ Plan: [PLAN.md](PLAN.md). Update this file at the end of each working session.
 | 2. Device backends | Done (2026-11-16); checked on macOS with an Atmel DFU keyboard |
 | 3. Main window | Done (2026-11-16); flash, Auto-Flash, drag-and-drop and settings verified on macOS |
 | 4. HID console and key tester | Done (2026-11-16); both verified on macOS with a real keyboard |
-| 5. Ubuntu work | Not started — next |
-| 6. CI and docs | Not started |
+| 5. Ubuntu work | Done (2026-11-16); `.deb` installed and verified on Ubuntu 26.04 with real keyboards |
+| 6. CI and docs | Not started — next |
 
 ## Running the app
 
@@ -20,6 +20,17 @@ From `qt/`:
 ```sh
 uv run qmk-toolbox            # optionally followed by a firmware file or a qmk:// link
 ```
+
+## Building the Linux package
+
+From `qt/`, on Ubuntu or Debian:
+
+```sh
+packaging/linux/build-deb.sh          # -> dist/qmk-toolbox_<version>-1_<arch>.deb (arm64: pass "arm64")
+sudo apt install ./dist/qmk-toolbox_*.deb
+```
+
+The Maintainer field comes from `DEBFULLNAME`/`DEBEMAIL`, or else git config. Downloads are cached in `build/downloads/`.
 
 ## Running the tests
 
@@ -69,13 +80,12 @@ Verified on hardware (2026-11-16, macOS): with `watch_devices.py --all`, a mini-
 
 With `watch_devices.py --reset atmega32u4`, the same keyboard was reset out of bootloader mode twice: each time the `dfu-programmer atmega32u4 reset` command was logged and the device disconnected. Homebrew's dfu-programmer 1.1.0 returned within the 5 s limit both times, so the timeout path has only been exercised by unit tests, not by a real hang. Two runs do not show the hang cannot happen with this build; the timeout stays as a guard.
 
-Not verified: an actual firmware flash (first possible from the UI in step 3); anything on Linux; serial-port matching against a real Caterina/SAM-BA device (in particular whether pyserial's `location` matches `UsbDevice.location` on each OS — if not, it falls back to the first VID/PID match); the LUFA MS mount lookup against a real device.
+Not verified: an actual firmware flash (first possible from the UI in step 3); anything on Linux (see step 5); serial-port matching against a real Caterina/SAM-BA device (in particular whether pyserial's `location` matches `UsbDevice.location` on each OS — if not, it falls back to the first VID/PID match); the LUFA MS mount lookup against a real device.
 
 Known limitations:
 
 - **LUFA MS mount lookup is a heuristic**: the first mounted volume containing both `FLASH.BIN` and `EEPROM.BIN`. It is not traced back to the USB device.
-- **Install hints** name apt/Homebrew packages for avrdude, dfu-programmer, dfu-util and teensy_loader_cli only; the package names are from memory and unverified. The other four tools get a generic message.
-- **`FlashContext.avrdude_conf` is unused** now that flashers come from the system; kept until step 5 settles whether any platform needs it.
+- **Install hints** (only seen when running from a checkout) name apt/Homebrew packages for avrdude, dfu-programmer, dfu-util and teensy_loader_cli; the apt names were verified on Ubuntu 26.04 in step 5, the Homebrew ones were not. The other four tools point to qmk_flashutils.
 
 ## Step 3 — main window (done)
 
@@ -104,7 +114,7 @@ Drag and drop of a firmware file onto the window worked, and after relaunching t
 
 The Exit DFU button was checked by hand as well.
 
-Also not verified: light theme and theme switching by eye; anything on Linux; clicking through the menus and dialogs by hand (file dialog, About).
+Also not verified: light theme and theme switching by eye; clicking through the menus and dialogs by hand (file dialog, About).
 
 Deliberate differences from the macOS app:
 
@@ -112,10 +122,9 @@ Deliberate differences from the macOS app:
 - **Buttons are disabled while Auto-Flash is on.**
 - **No "QMK Toolbox Help" menu item.**
 
-Not done yet, and where it belongs:
+Deferred from this step:
 
-- Registering the app for .hex/.bin files and the `qmk:` URL scheme — packaging, step 5 (`.desktop` file).
-- Single-instance behaviour (the Windows app forwards a second launch to the running one) — not planned yet; decide in step 5.
+- Registering the app for .hex files and the `qmk:` URL scheme, and single-instance behaviour — both done in step 5. `.bin` files are not registered: their MIME type is `application/octet-stream`, and claiming that would offer the app for every unknown file.
 
 ## Step 4 — HID console and key tester (done)
 
@@ -135,7 +144,7 @@ Verified on hardware (2026-11-16, macOS):
 
 Not verified: two console devices at once and raw HID devices on real hardware (unit tests only).
 
-Also not verified: anything on Linux — the evdev scan-code table, and the `hidraw` module preference (see below).
+Linux was verified in step 5.
 
 Deliberate differences from the macOS app:
 
@@ -146,18 +155,59 @@ Possible improvement, raised 2026-11-16 and deferred: on macOS, label the key te
 
 Known limitations:
 
-- **On Linux the `hidraw` module is tried before `hid`.** With cython-hidapi the `hid` module uses libusb there, which detaches the keyboard from the kernel while the console is open. Whether Ubuntu's `python3-hid` package ships `hidraw` is unverified; check in step 5.
-- **Reading a console on Linux needs permission on `/dev/hidraw*`** — part of the udev rules in step 5.
+- **On Linux the `hidraw` module is tried before `hid`.** With cython-hidapi the `hid` module uses libusb there, which detaches the keyboard from the kernel while the console is open (on Ubuntu 26.04 it also found no devices at all). Both the PyPI wheel and Ubuntu's `python3-hid` ship `hidraw`.
 - **The key tester does nothing on Windows** (no scan-code table).
 
-## Notes for step 5
+## Step 5 — Ubuntu (done)
 
-- udev rules: bootloader USB devices (for the flashers) and hidraw access for console devices. QMK ships `50-qmk.rules`; start from that.
-- Check on Ubuntu 26.04: apt names for the Python modules (PySide6, pyusb, pyserial, hidapi) and for the flashers; that `hidraw` imports; Wayland behaviour of the key tester.
-- `.desktop` file: MIME types for .hex/.bin and the `x-scheme-handler/qmk` URL scheme.
-- Decide on single-instance behaviour.
+Added:
+
+- `udev.py` — whether udev has finished with a device, from its entry in `/run/udev/data`. A device shows up in sysfs (and so to libusb and pyserial) before udev has applied its rules, so a flasher started at once by Auto-Flash could be refused access. On Linux, `PyUsbBackend.scan` now leaves a device out until udev is done with it, and `find_serial_port` does the same for the tty.
+- `environment.py` — `flashers_dir()` (`QMK_TOOLBOX_FLASHERS_DIR`, or `qmk_toolbox/flashers/` in the package), searched before `PATH`; `avrdude_conf()` passes the bundled avrdude its own config with `-C`; `access_problem()` checks on Linux whether the user can open a bootloader's USB node (or its serial port), and the main window logs an error when a bootloader connects if not, pointing to qmk_udev.
+- `ui/single_instance.py` — one instance per user, as on Windows: a second launch connects to a `QLocalServer` socket in `$XDG_RUNTIME_DIR` (user-only), hands over its file or `qmk:` link and its `XDG_ACTIVATION_TOKEN`, and exits. The running window selects the file and raises itself; the token is what lets GNOME on Wayland bring it to the front.
+- `firmware.local_path()` — `file://` URLs (as desktop environments pass files with `%u`) become paths.
+- `usb_backend.py` — root hubs' names are read from sysfs `usbN` (they showed blank before).
+- `app.py` — window icon from the icon theme (`qmk-toolbox`).
+- `packaging/linux/` — `build-deb.sh` and the files it installs: launcher (`/usr/bin/qmk-toolbox`, runs `python3 -I` with `/usr/lib/qmk-toolbox` on the path), `.desktop` file (`.hex` files and `qmk:` links, `StartupNotify`, `SingleMainWindow`), a `text/x-ihex` MIME type for `*.hex` (shared-mime-info has none), hicolor icons from the macOS asset catalogue, `copyright`, `postinst` (byte-compiles; reloads udev and re-triggers hidraw devices) and `prerm`.
+
+The package layout is `/usr/lib/qmk-toolbox/` = the unpacked wheel (so `importlib.metadata` reports the version) + `qmk_toolbox/data/` (from `common/`) + `qmk_toolbox/flashers/` (qmk_flashutils 20260711: avrdude 8.1, bootloadHID, dfu-programmer 1.1.0, dfu-util 0.11-dev, hid_bootloader_cli, mdloader 1.07, teensy_loader_cli, wb32-dfu-updater_cli 1.0.0, all statically linked); `/usr/lib/udev/qmk_id` and `/usr/lib/udev/rules.d/50-qmk.rules` (qmk_udev v0.1.23). Dependencies are all from the Ubuntu archive: python3-pyside6.qtwidgets/.qtnetwork 6.10.2, python3-usb 1.2.1, python3-serial 3.5, python3-hid 0.15.0, and `qt6-wayland | qt6-qpa-plugins`.
+
+Findings on Ubuntu 26.04 (amd64, GNOME on Wayland, Python 3.14):
+
+- Ubuntu packages avrdude 7.1, dfu-programmer 1.1.0, dfu-util 0.11 and teensy-loader-cli 2.2, and not bootloadHID, mdloader, hid_bootloader_cli or wb32-dfu-updater_cli. Moot for the package now that it bundles qmk_flashutils.
+- QMK moved its udev rules out of qmk_firmware into qmk/qmk_udev (2026-04). The new rules no longer give the user every hidraw device: `qmk_id` reads each report descriptor and tags only QMK's console, raw HID and XAP endpoints. The rules also set `ID_MM_DEVICE_IGNORE` on Caterina and SAM-BA bootloaders, which is what keeps ModemManager (1.25.95, running by default) off their serial ports.
+- An older `/etc/udev/rules.d/50-qmk.rules` (from an earlier `qmk setup`) overrides the package's file of the same name. It still works but grants every hidraw device; delete it to get the narrow rules. The development laptop still has one.
+
+Verified on the development laptop (2026-11-16):
+
+- 118 unit tests pass, both with the uv environment (PySide6 6.12, pyusb 1.3.1) and against Ubuntu's own packages (PySide6 6.10.2, pyusb 1.2.1), via a venv with system site packages.
+- `apt install` of the `.deb` pulled 32 packages, all from the archive. The app appears in the GNOME app grid with its icon, runs natively on Wayland (`libqwayland`, GTK platform theme), reports version 0.3.4, and finds all eight bundled flashers and the bundled `avrdude.conf`. `.hex` files and `qmk:` links are associated with it.
+- **Flash:** a wired mini-mighty-kbd (ATmega16U2, Atmel DFU 03EB:2FEF) was detected without a permission error (udev gave the user an ACL on the node), and flashed, validated and reset with the bundled dfu-programmer; the final reset returned at once.
+- **HID console:** the mini-mighty-kbd-wireless (ATmega32U4, console firmware) was found through `hidraw` and its output shown line by line, while the keyboard kept typing.
+- **Key tester:** every key of the wireless keyboard lit up in the right place under Wayland.
+- **Single instance:** double-clicking a `.hex` in Files with the app open raised the running window; no second process.
+
+Not verified:
+
+- The arm64 package (not built).
+- Serial bootloaders (Caterina, AVRISP, SAM-BA) and ModemManager on real hardware; LUFA MS mounting; any bootloader other than Atmel DFU on Linux.
+- The `access_problem` error on real hardware (the rules were in place); only unit tests.
+- Removing the package (`prerm`).
+- X11 sessions.
+
+Deliberate differences from the macOS app:
+
+- **Single instance** as on Windows (macOS gets it from LaunchServices).
+- **Bootloaders appear in the log only once udev has set them up**, a few milliseconds later than the kernel reports them.
+- **An inaccessible bootloader is reported** on connect, with a pointer to the udev rules.
+
+## Notes for step 6
+
+- CI: a job on `ubuntu-latest` (or a 26.04 container, to match the archive's Python and PySide6) that runs `uv run pytest` and `build-deb.sh` for amd64 and arm64, uploads the packages, and attaches them to releases like the other apps. It needs `DEBFULLNAME`/`DEBEMAIL`.
+- Docs: `readme.md` (Linux install, and the supported-bootloader list if it changes), `CLAUDE.md`.
+- Before publishing packages: the bundled flashers are GPL/LGPL, statically linked. `copyright` points to the qmk_flashutils source at the pinned commit; check that this meets the licences for redistribution.
 
 ## Background
 
-- **Flashers come from the system, not the repo** (decided 2026-11-16, see PLAN.md). The binaries in `macos/QMK Toolbox/Resources/` are x86_64-only and do not run on the arm64 development Mac without Rosetta anyway. Homebrew there has `dfu-util` and `dfu-programmer` 1.1.0; the other six tools are not installed. The primary test device uses Atmel DFU, so `dfu-programmer` is the one that matters first.
+- **Flashers.** First decided (2026-11-16) to use the system's, since the binaries in `macos/QMK Toolbox/Resources/` are x86_64-only and do not run on the arm64 development Mac without Rosetta. Revised the same day in step 5: the Linux package bundles qmk_flashutils, and runs from a checkout still use `PATH`. qmk_flashutils also has macOS arm64 builds, should the Mac ever need them. Homebrew on the Mac has `dfu-util` and `dfu-programmer` 1.1.0; the primary test devices use Atmel DFU, so `dfu-programmer` matters most.
 - **`dfu-programmer reset` can hang on macOS 27.** After the chip leaves DFU the process often never returns, although the reset worked. The installed native QMK Toolbox on the development Mac is patched with a wrapper script that kills `reset`/`launch` after 5 s and reports success. Handled here in step 2 with a timeout. Homebrew's 1.1.0 build did not hang in two standalone resets, but did hang on the reset after a real flash (2026-11-16), where the timeout recovered as intended.

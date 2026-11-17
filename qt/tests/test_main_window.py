@@ -74,7 +74,9 @@ class Ui:
 
 
 @pytest.fixture
-def ui(app, harness, tmp_path):
+def ui(app, harness, tmp_path, monkeypatch):
+    # The fake devices' bus and address could name a real device node here.
+    monkeypatch.setattr(environment, "access_problem", lambda device: None)
     ui = Ui(harness, tmp_path)
     yield ui
     ui.idle()
@@ -241,6 +243,15 @@ def test_auto_flash_of_a_device_connecting_during_a_flash(ui):
     assert ui.log().count("Attempting to flash") == 2
 
 
+def test_inaccessible_bootloader_is_reported(ui, monkeypatch):
+    monkeypatch.setattr(environment, "access_problem", lambda device: f"No access to {device.name}")
+    ui.attach(ATMEL_DFU)
+    assert "Atmel DFU device connected" in ui.log()
+    assert "No access to Atmel DFU" in ui.log()
+    ui.attach(ATMEL_DFU, KEYBOARD)
+    assert ui.log().count("No access to") == 1
+
+
 def test_missing_libusb_is_reported_once(ui):
     ui.backend.error = UsbBackendError("libusb was not found")
     ui.window._poll_timer.start()
@@ -304,6 +315,13 @@ def test_qmk_link_is_downloaded_and_selected(ui, tmp_path, monkeypatch):
     monkeypatch.setattr(firmware, "download_firmware", failing_download)
     ui.window.set_file_path("qmk://https://example.com/setup.exe")
     wait_until(lambda: "Could not download file" in ui.log())
+
+
+def test_another_launch_selects_its_file(ui, monkeypatch):
+    monkeypatch.setenv("XDG_ACTIVATION_TOKEN", "")  # restored after the test
+    ui.window.present([ui.firmware.as_uri()], "token-2")
+    assert ui.window.filepath_box.currentText() == str(ui.firmware)
+    assert os.environ["XDG_ACTIVATION_TOKEN"] == "token-2"
 
 
 def test_tools_menu_opens_the_other_windows(ui):

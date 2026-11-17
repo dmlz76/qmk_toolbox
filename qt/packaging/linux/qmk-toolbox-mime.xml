@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- shared-mime-info has no type for Intel HEX files; QMK firmware comes in them. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-ihex">
+    <comment>Intel HEX firmware</comment>
+    <sub-class-of type="text/plain"/>
+    <glob pattern="*.hex"/>
+  </mime-type>
+</mime-info>

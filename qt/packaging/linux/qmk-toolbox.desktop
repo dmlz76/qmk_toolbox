@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=QMK Toolbox
+GenericName=Keyboard Firmware Flasher
+Comment=Flash and debug keyboards running QMK Firmware
+Exec=qmk-toolbox %u
+Icon=qmk-toolbox
+Terminal=false
+Categories=Development;
+Keywords=keyboard;firmware;flash;bootloader;dfu;qmk;
+MimeType=text/x-ihex;x-scheme-handler/qmk;
+StartupNotify=true
+SingleMainWindow=true

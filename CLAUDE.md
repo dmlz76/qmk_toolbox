@@ -16,7 +16,7 @@ Almost any behavioural change (new bootloader, new VID/PID, changed flasher argu
 
 ## Python/Qt port (in progress, `qt-port` branch)
 
-`qt/` is a third implementation (Python + PySide6) aimed at Linux, also runnable on macOS. It is a self-contained project that mirrors the Swift app's structure and does not touch `macos/` or `windows/`. Before working on it, read `qt/PLAN.md` (goal, decisions, steps) and `qt/PROGRESS.md` (what is done, what has and has not been verified, notes for the next step), and update `PROGRESS.md` at the end of each session. From `qt/`: `uv run pytest` runs its tests, `uv run qmk-toolbox` runs the app.
+`qt/` is a third implementation (Python + PySide6) aimed at Linux, also runnable on macOS. It is a self-contained project that mirrors the Swift app's structure and does not touch `macos/` or `windows/`. Before working on it, read `qt/PLAN.md` (goal, decisions, steps) and `qt/PROGRESS.md` (what is done, what has and has not been verified, notes for the next step), and update `PROGRESS.md` at the end of each session. From `qt/`: `uv run pytest` runs its tests, `uv run qmk-toolbox` runs the app, `packaging/linux/build-deb.sh` builds the Ubuntu/Debian package (bundling QMK's qmk_flashutils and qmk_udev releases, pinned in `packaging/linux/SHA256SUMS`).
 
 ## Build
 
@@ -76,6 +76,7 @@ The version string is duplicated; a bump touches all of these (see commit `22f05
 - `windows/QMK Toolbox/QMK Toolbox.csproj` (`AssemblyVersion`, `FileVersion`, `Version`)
 - `windows/install_compiler.iss`
 - `windows/QMK Toolbox/Properties/DataSources/WindowState.datasource`
+- `qt/pyproject.toml` (also the version of the Linux package)
 
 ## Conventions
 

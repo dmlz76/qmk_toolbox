@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    python3 -m compileall -q /usr/lib/qmk-toolbox >/dev/null || true
+
+    # Bootloaders get the new udev rules when they connect; a keyboard that is
+    # already plugged in needs them applied for its HID console.
+    if [ -d /run/udev ] && command -v udevadm >/dev/null; then
+        udevadm control --reload-rules || true
+        udevadm trigger --action=change --subsystem-match=hidraw || true
+    fi
+fi

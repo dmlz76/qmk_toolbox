@@ -14,6 +14,13 @@ def test_is_firmware_file():
     assert not firmware.is_firmware_file("")
 
 
+def test_local_path():
+    assert firmware.local_path("file:///home/me/My%20Board.hex") == "/home/me/My Board.hex"
+    assert firmware.local_path("file://localhost/tmp/fw.bin") == "/tmp/fw.bin"
+    assert firmware.local_path("/tmp/fw.bin") == "/tmp/fw.bin"
+    assert firmware.local_path("file://server/share/fw.bin") == "file://server/share/fw.bin"
+
+
 def test_unwrap_qmk_url():
     assert firmware.unwrap_qmk_url("qmk://https://example.com/fw.hex") == "https://example.com/fw.hex"
     assert firmware.unwrap_qmk_url("qmk:https://example.com/fw.hex") == "https://example.com/fw.hex"

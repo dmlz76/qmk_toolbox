@@ -7,8 +7,10 @@ import os
 import sys
 from pathlib import Path
 
+from . import udev
 from .process_runner import ProcessRunner
-from .usb.bootloader.bootloader_device import FlashContext
+from .usb.bootloader.bootloader_device import BootloaderDevice, FlashContext, SerialBootloaderDevice
+from .usb.bootloader.lufa_ms_device import LUFAMSDevice
 from .usb.usb_device import UsbDevice
 
 # Flashers that can be installed from the system package manager, as
@@ -25,6 +27,8 @@ _HOMEBREW_FORMULAE = {
     "dfu-util": "dfu-util",
     "teensy_loader_cli": "teensy_loader_cli",
 }
+FLASHUTILS_URL = "https://github.com/qmk/qmk_flashutils/releases"
+UDEV_RULES_URL = "https://github.com/qmk/qmk_udev"
 
 
 def data_dir() -> Path:
@@ -43,13 +47,35 @@ def data_file(name: str) -> str:
     return str(data_dir() / name)
 
 
+def flashers_dir() -> Path | None:
+    """The flashers bundled with an installed package, if there are any."""
+    override = os.environ.get("QMK_TOOLBOX_FLASHERS_DIR")
+    if override:
+        return Path(override)
+    bundled = Path(__file__).resolve().parent / "flashers"
+    return bundled if bundled.is_dir() else None
+
+
 def tool_dirs() -> list[Path]:
-    """Extra places to look for flashers, besides ``PATH``."""
+    """Places to look for flashers before ``PATH``."""
+    dirs = []
+    bundled = flashers_dir()
+    if bundled is not None:
+        dirs.append(bundled)
     if sys.platform == "darwin":
         # Apps started from Finder do not get the shell's PATH, so Homebrew's
         # directories have to be named explicitly.
-        return [Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
-    return []
+        dirs += [Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
+    return dirs
+
+
+def avrdude_conf() -> str | None:
+    """The config of the bundled avrdude. A system avrdude uses its own."""
+    bundled = flashers_dir()
+    if bundled is None or not (bundled / "avrdude").is_file():
+        return None
+    conf = bundled / "avrdude.conf"
+    return str(conf) if conf.is_file() else None
 
 
 def install_hint(tool: str) -> str:
@@ -57,7 +83,7 @@ def install_hint(tool: str) -> str:
         return f"Install it with: sudo apt install {_APT_PACKAGES[tool]}"
     if sys.platform == "darwin" and tool in _HOMEBREW_FORMULAE:
         return f"Install it with: brew install {_HOMEBREW_FORMULAE[tool]}"
-    return f"Install {tool} and make sure it is on your PATH."
+    return f"Install {tool} and make sure it is on your PATH. QMK publishes builds at {FLASHUTILS_URL}"
 
 
 def find_serial_port(usb_device: UsbDevice) -> str | None:
@@ -69,6 +95,9 @@ def find_serial_port(usb_device: UsbDevice) -> str | None:
         for port in list_ports.comports()
         if port.vid == usb_device.vendor_id and port.pid == usb_device.product_id
     ]
+    if sys.platform.startswith("linux"):
+        # Not until udev has set the port up: before that, opening it can fail.
+        matches = [port for port in matches if udev.is_node_initialized(port.device)]
     # With two identical boards attached, prefer the one on the same USB port.
     for port in matches:
         if port.location and port.location.split(":")[0] == usb_device.location:
@@ -104,9 +133,30 @@ def find_mount_point(usb_device: UsbDevice) -> str | None:
     return None
 
 
+def access_problem(device: BootloaderDevice) -> str | None:
+    """Why a flasher would not be allowed to open this device, if it would not.
+
+    Only on Linux, where access to devices is granted by udev rules.
+    """
+    if not sys.platform.startswith("linux") or isinstance(device, LUFAMSDevice):
+        return None
+    if isinstance(device, SerialBootloaderDevice):
+        # None if the port has not appeared yet; the flasher reports that.
+        node = device.serial_port
+    else:
+        node = udev.usb_device_node(device.usb_device.bus, device.usb_device.address)
+    if node is None or not os.path.exists(node) or os.access(node, os.R_OK | os.W_OK):
+        return None
+    return (
+        f"You do not have permission to use {node}, so flashing this device will fail. "
+        f"Install QMK's udev rules ({UDEV_RULES_URL}), then reconnect the device."
+    )
+
+
 def create_flash_context() -> FlashContext:
     return FlashContext(
         runner=ProcessRunner(tool_dirs=tool_dirs(), cwd=data_dir(), install_hint=install_hint),
+        avrdude_conf=avrdude_conf(),
         find_serial_port=find_serial_port,
         find_mount_point=find_mount_point,
     )

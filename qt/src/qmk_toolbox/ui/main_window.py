@@ -234,6 +234,9 @@ class MainWindow(QMainWindow):
 
     def _bootloader_device_connected(self, device: BootloaderDevice) -> None:
         self.log_text_view.log_bootloader(f"{device.name} device connected: {device}")
+        problem = environment.access_problem(device)
+        if problem:
+            self.log_text_view.log_error(problem)
         if self.auto_flash_enabled:
             if self._busy:
                 self._auto_flash_pending = True
@@ -376,6 +379,7 @@ class MainWindow(QMainWindow):
     def set_file_path(self, path: str) -> None:
         """Select a local firmware file, or download the one a ``qmk:`` link points to."""
         url = firmware.unwrap_qmk_url(path)
+        path = firmware.local_path(path)
         if url is not None:
             self._download_file(url)
         elif firmware.is_firmware_file(path):
@@ -443,6 +447,17 @@ class MainWindow(QMainWindow):
         _bring_to_front(self.hid_console_window)
 
     # MARK: Window events
+
+    def present(self, arguments: list[str], activation_token: str = "") -> None:
+        """Another launch of the app handed its arguments (a file or qmk: link) to this one."""
+        if arguments:
+            self.set_file_path(arguments[0])
+        if activation_token:
+            # Qt uses it to ask the Wayland compositor to raise the window.
+            os.environ["XDG_ACTIVATION_TOKEN"] = activation_token
+        if self.isMinimized():
+            self.showNormal()
+        _bring_to_front(self)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         urls = event.mimeData().urls()

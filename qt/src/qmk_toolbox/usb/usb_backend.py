@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import Any, Hashable
 
+from .. import udev
 from .usb_device import UsbDevice
 
 SYSFS_USB_DEVICES = Path("/sys/bus/usb/devices")
@@ -29,6 +30,10 @@ class PyUsbBackend:
             devices = usb.core.find(find_all=True)
         except usb.core.NoBackendError as error:
             raise UsbBackendError("libusb was not found; install it to detect USB devices") from error
+        if sys.platform.startswith("linux"):
+            # Report a device once udev has set it up, so that a flasher
+            # started as soon as it connects is allowed to open it.
+            devices = [d for d in devices if udev.is_usb_device_initialized(d.bus, d.address)]
         return {(d.bus, d.address, d.idVendor, d.idProduct, d.bcdDevice): d for d in devices}
 
     def describe(self, handle: Any) -> UsbDevice:
@@ -41,7 +46,9 @@ class PyUsbBackend:
             address=handle.address or 0,
             port_numbers=port_numbers,
         )
-        manufacturer, product = self._strings(handle, device.location)
+        # Root hubs have no port path; sysfs names them usb1, usb2, ...
+        sysfs_name = device.location if port_numbers else f"usb{device.bus}"
+        manufacturer, product = self._strings(handle, sysfs_name)
         return UsbDevice(
             device.vendor_id,
             device.product_id,
@@ -53,11 +60,11 @@ class PyUsbBackend:
             port_numbers,
         )
 
-    def _strings(self, handle: Any, location: str) -> tuple[str | None, str | None]:
+    def _strings(self, handle: Any, sysfs_name: str) -> tuple[str | None, str | None]:
         if sys.platform.startswith("linux"):
             # The kernel has already read these; unlike asking the device,
             # this needs no permissions on it.
-            sysfs = SYSFS_USB_DEVICES / location
+            sysfs = SYSFS_USB_DEVICES / sysfs_name
             if sysfs.is_dir():
                 return _read_sysfs(sysfs / "manufacturer"), _read_sysfs(sysfs / "product")
 

@@ -15,6 +15,15 @@ def is_firmware_file(path: str) -> bool:
     return path.lower().endswith(FIRMWARE_EXTENSIONS)
 
 
+def local_path(path: str) -> str:
+    """The path in a local ``file:`` URL, as desktop environments pass files; anything else unchanged."""
+    if path.startswith("file:"):
+        parsed = urlparse(path)
+        if parsed.netloc in ("", "localhost"):
+            return unquote(parsed.path)
+    return path
+
+
 def unwrap_qmk_url(url: str) -> str | None:
     """``qmk://https://host/fw.hex`` (or ``qmk:https://...``) -> the inner URL.
 
