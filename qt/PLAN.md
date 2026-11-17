@@ -16,7 +16,7 @@ A third implementation of QMK Toolbox, next to `macos/` (Swift/AppKit) and `wind
 - **Location:** `qt/` at the repo root, a self-contained Python project (`src/` layout). `macos/` and `windows/` are not touched.
 - **Structure mirrors the Swift app** (`usb/usb_device.py` ↔ `USB/USBDevice.swift`, one module per bootloader under `usb/bootloader/`), so parity changes are easy to apply across all three trees.
 - **The core is Qt-free.** Bootloader classes, the VID/PID table and the process runner have no Qt or USB-library imports, so they are unit-testable without hardware. Qt is only used in the UI layer.
-- **Flashers.** The Linux package bundles QMK's own flasher builds ([qmk_flashutils](https://github.com/qmk/qmk_flashutils): all eight tools, statically linked, for x86_64 and arm64) with their `avrdude.conf`, as the native apps bundle theirs. The release is pinned and checked against SHA-256 sums when the package is built; nothing is downloaded at run time. Run from a checkout, the app uses the flashers on `PATH` (apt, Homebrew) and says how to install a missing one. Changed 2026-11-16: the first version of this plan used system flashers only, on the assumption that there were no upstream prebuilt Linux binaries; qmk_flashutils turned out to be exactly that.
+- **Flashers.** The Linux package bundles QMK's own flasher builds ([qmk_flashutils](https://github.com/qmk/qmk_flashutils): all eight tools, statically linked, for x86_64 and arm64) with their `avrdude.conf`, as the native apps bundle theirs. The release is pinned and checked against SHA-256 sums when the package is built; nothing is downloaded at run time. Run from a checkout, the app uses the flashers on `PATH` (apt, Homebrew) and says how to install a missing one. As with the native apps, the flashers' source is not shipped with the package; its `copyright` file points to qmk_flashutils at the pinned commit (decided 2026-11-16, see PROGRESS.md, step 6). Changed 2026-11-16: the first version of this plan used system flashers only, on the assumption that there were no upstream prebuilt Linux binaries; qmk_flashutils turned out to be exactly that.
 - **udev rules** are QMK's own ([qmk_udev](https://github.com/qmk/qmk_udev)), installed unchanged by the package with their `qmk_id` helper, which grants access only to QMK's HID endpoints rather than to every hidraw device.
 - **Shared data** (`mcu-list.txt`, `reset*.eep`, `avrdude.conf`) comes from `common/`, as for the other two apps.
 
@@ -42,7 +42,7 @@ A third implementation of QMK Toolbox, next to `macos/` (Swift/AppKit) and `wind
 
 ## Open questions
 
-- **arm64.** `build-deb.sh arm64` is wired up and its downloads are pinned, but no arm64 package has been built or run.
+- **arm64.** The package builds, and CI installs and starts it on an ARM runner, but it has not been used with a keyboard.
 - **macOS distribution.** Not planned; on macOS this is a development convenience. The native app stays the shipped one.
 - **Windows.** Out of scope; libusb enumeration and driver handling there need separate investigation.
 - **Upstreaming.** Undecided whether this goes to `qmk/qmk_toolbox` or stays in a fork.

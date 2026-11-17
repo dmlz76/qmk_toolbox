@@ -11,7 +11,7 @@ Plan: [PLAN.md](PLAN.md). Update this file at the end of each working session.
 | 3. Main window | Done (2026-11-16); flash, Auto-Flash, drag-and-drop and settings verified on macOS |
 | 4. HID console and key tester | Done (2026-11-16); both verified on macOS with a real keyboard |
 | 5. Ubuntu work | Done (2026-11-16); `.deb` installed and verified on Ubuntu 26.04 with real keyboards |
-| 6. CI and docs | Not started — next |
+| 6. CI and docs | Done (2026-11-16) except a first CI run on GitHub |
 
 ## Running the app
 
@@ -201,11 +201,37 @@ Deliberate differences from the macOS app:
 - **Bootloaders appear in the log only once udev has set them up**, a few milliseconds later than the kernel reports them.
 - **An inaccessible bootloader is reported** on connect, with a pointer to the udev rules.
 
-## Notes for step 6
+## Step 6 — CI and docs (done, not yet run on GitHub)
 
-- CI: a job on `ubuntu-latest` (or a 26.04 container, to match the archive's Python and PySide6) that runs `uv run pytest` and `build-deb.sh` for amd64 and arm64, uploads the packages, and attaches them to releases like the other apps. It needs `DEBFULLNAME`/`DEBEMAIL`.
-- Docs: `readme.md` (Linux install, and the supported-bootloader list if it changes), `CLAUDE.md`.
-- Before publishing packages: the bundled flashers are GPL/LGPL, statically linked. `copyright` points to the qmk_flashutils source at the pinned commit; check that this meets the licences for redistribution.
+Added:
+
+- `.github/workflows/build.yml` — a `build_linux` job, once for amd64 (`ubuntu-latest`) and once for arm64 (`ubuntu-24.04-arm`), each in an `ubuntu:26.04` container: installs Ubuntu's python3-pyside6 and the other dependencies from the archive, runs the tests with them (`python3 -m pytest`, not uv, so they run against what the package uses), builds the `.deb` for its own architecture, installs it with apt and starts it for 5 s on Qt's offscreen platform (it must still be running, with no traceback on stderr). The packages are uploaded as `qmk-toolbox-linux-<arch>` and attached to releases and the beta by the existing publish jobs, which now also wait for `build_linux`.
+- Maintainer of CI-built packages: the repository variables `DEBFULLNAME`/`DEBEMAIL`, else `QMK <hello@qmk.fm>` (QMK's contact address, used in its code of conduct and workflows).
+- `.github/labeler.yml` — a `linux` label for changes under `qt/`.
+- `readme.md` — Ubuntu 26.04 in the requirements, the udev rules (and the old `/etc/udev/rules.d/50-qmk.rules`), download links for both packages, `apt install`, a pointer to `qt/`.
+- `qt/README.md` — running from source, tests, building the package.
+- `CLAUDE.md` — the CI job, where the bootloader parity changes go in `qt/`, the package file names in the readme's links as part of a version bump.
+- `packaging/linux/copyright` — each flasher's licence, from its source: avrdude, dfu-programmer, dfu-util GPL-2+; bootloadHID GPL-2 or GPL-3; hid_bootloader_cli and teensy_loader_cli GPL-3 only; mdloader GPL-3+; wb32-dfu-updater_cli Apache-2.0; qmk_id GPL-2+ (it said "GPL-2+ and others" and "GPL" before).
+
+Verified on the development laptop (Ubuntu 26.04):
+
+- The 118 tests pass with the system's Python packages in a bare environment (`env -i`, no display), as the CI step runs them.
+- The arm64 package builds from amd64 with `DEBFULLNAME=QMK DEBEMAIL=hello@qmk.fm`: aarch64 flashers and `qmk_id`, Maintainer `QMK <hello@qmk.fm>`.
+- The smoke test's command against the installed package (offscreen, no display, empty runtime and config directories): still running after 5 s, no traceback.
+- The workflow and labeler files parse, and the job has the expected steps and matrix. Not linted with actionlint.
+
+Not verified:
+
+- **The workflow has not run on GitHub.** It only runs on pushes to `master`, on releases and on pull requests, so the first run needs a pull request (e.g. `qt-port` → `master` on the fork). Untested in particular: the container on the ARM runner, `setup-uv` inside the container, the publish steps' `./qmk-toolbox-linux-*/*.deb` glob.
+- The arm64 package with a real keyboard.
+- The readme's download links (they work once a release with the packages exists).
+
+Licences of the bundled flashers (raised in step 5, checked and decided here):
+
+- The complete corresponding source of the flashers is qmk_flashutils at the commit in `flashutils_release_*` (7b9cff3) with its submodules (bootloadHID is vendored there as a tarball; libftdi and libserialport come from git:// servers outside GitHub), plus QMK's cross toolchain (`x86_64-qmk-linux-gnu-gcc`), whose C library is linked into the static binaries.
+- The package only points to that repository. For the GPL-3 tools (teensy_loader_cli, hid_bootloader_cli, mdloader) GPL-3 §6(d) allows source on a third party's server, if the distributor makes sure it stays available. For the GPL-2+ tools (avrdude, dfu-programmer, dfu-util), GPL-2 §3 asks for the source to accompany the binaries, a written offer, or equivalent access "from the same place".
+- The native macOS and Windows apps already bundle builds of the same GPL tools without shipping their source, so the Linux package does what QMK already does.
+- **Decided (2026-11-16): do as the native apps do.** No source archive is attached to releases; `copyright` points to qmk_flashutils at the pinned commit. The more conservative option, if that is ever wanted, is to attach qmk_flashutils at that commit with its submodules to each release next to the packages.
 
 ## Background
 

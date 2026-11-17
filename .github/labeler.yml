@@ -4,3 +4,6 @@ windows:
 macos:
   - changed-files:
     - any-glob-to-any-file: 'macos/**/*'
+linux:
+  - changed-files:
+    - any-glob-to-any-file: 'qt/**/*'

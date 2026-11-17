@@ -48,6 +48,7 @@ See the [QMK Docs](https://docs.qmk.fm/#/newbs_testing_debugging?id=debugging) f
 
 * macOS 12 (Monterey) or higher
 * Windows 10 May 2020 Update (20H1) or higher
+* Ubuntu 26.04 or higher (x86-64 or ARM64)
 
 ### Dependencies
 
@@ -55,15 +56,26 @@ When using the QMK Toolbox on Windows, it will prompt at first run to install th
 
 If you run into any issues with "Device not found" when flashing, then you may need to use [Zadig](https://docs.qmk.fm/#/driver_installation_zadig) to fix the issue.
 
+On Linux, the package installs QMK's [udev rules](https://github.com/qmk/qmk_udev), which let you flash and use the HID console without root, and keep ModemManager away from serial bootloaders. Older rules in `/etc/udev/rules.d/50-qmk.rules` (for example from `qmk setup`) take precedence over the package's; they still work, but give access to every HID device, so you may want to delete them.
+
 ### Download
 
 The [current version](https://github.com/qmk/qmk_toolbox/releases) of QMK Toolbox is **0.3.4**.
 
 * **Windows:** [standalone](https://github.com/qmk/qmk_toolbox/releases/latest/download/qmk_toolbox.exe), [installer](https://github.com/qmk/qmk_toolbox/releases/latest/download/qmk_toolbox_install.exe)
 * **macOS**: [standalone](https://github.com/qmk/qmk_toolbox/releases/latest/download/QMK.Toolbox.app.zip), [installer](https://github.com/qmk/qmk_toolbox/releases/latest/download/QMK.Toolbox.pkg)
+* **Linux:** [x86-64](https://github.com/qmk/qmk_toolbox/releases/latest/download/qmk-toolbox_0.3.4-1_amd64.deb), [ARM64](https://github.com/qmk/qmk_toolbox/releases/latest/download/qmk-toolbox_0.3.4-1_arm64.deb) Debian packages
 
 For Homebrew users, it is also available as a Cask:
 
 ```sh
 brew install qmk-toolbox
 ```
+
+On Ubuntu, install the package with apt, which also installs its dependencies:
+
+```sh
+sudo apt install ./qmk-toolbox_0.3.4-1_amd64.deb
+```
+
+The Linux version is a separate implementation in Python and Qt; see [`qt/`](qt/README.md) for running it from source.

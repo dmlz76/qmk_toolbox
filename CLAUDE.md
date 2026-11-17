@@ -18,9 +18,11 @@ Almost any behavioural change (new bootloader, new VID/PID, changed flasher argu
 
 `qt/` is a third implementation (Python + PySide6) aimed at Linux, also runnable on macOS. It is a self-contained project that mirrors the Swift app's structure and does not touch `macos/` or `windows/`. Before working on it, read `qt/PLAN.md` (goal, decisions, steps) and `qt/PROGRESS.md` (what is done, what has and has not been verified, notes for the next step), and update `PROGRESS.md` at the end of each session. From `qt/`: `uv run pytest` runs its tests, `uv run qmk-toolbox` runs the app, `packaging/linux/build-deb.sh` builds the Ubuntu/Debian package (bundling QMK's qmk_flashutils and qmk_udev releases, pinned in `packaging/linux/SHA256SUMS`).
 
+Behavioural changes to the native apps should be carried over to `qt/` too. Its equivalents of the files named below: `usb/bootloader/bootloader_type.py`, the VID/PID table and `create_device` in `usb/device_factory.py`, one module per bootloader in `usb/bootloader/`, and the startup messages in `ui/main_window.py`. A test fails if the VID/PID table differs from `USBListener.swift`.
+
 ## Build
 
-There are no tests and no linter for the native apps. CI (`.github/workflows/build.yml`) only builds and packages.
+There are no tests and no linter for the native apps. CI (`.github/workflows/build.yml`) only builds and packages them. For `qt/`, the `build_linux` job runs the tests with Ubuntu 26.04's own Python packages (the ones the `.deb` depends on), builds the `.deb` for amd64 and arm64, and installs and starts it, each on a native runner in an `ubuntu:26.04` container. The package's Maintainer field comes from the repository variables `DEBFULLNAME`/`DEBEMAIL`, defaulting to QMK.
 
 macOS (from `macos/`):
 
@@ -70,7 +72,7 @@ Do each step on both platforms:
 
 The version string is duplicated; a bump touches all of these (see commit `22f0516`):
 
-- `readme.md`
+- `readme.md` (also the Linux package file names in the download links)
 - `macos/QMK Toolbox/Info.plist`
 - `macos/QMK Toolbox.pkgproj`
 - `windows/QMK Toolbox/QMK Toolbox.csproj` (`AssemblyVersion`, `FileVersion`, `Version`)
