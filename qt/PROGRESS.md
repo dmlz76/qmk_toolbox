@@ -11,7 +11,7 @@ Plan: [PLAN.md](PLAN.md). Update this file at the end of each working session.
 | 3. Main window | Done (2026-11-16); flash, Auto-Flash, drag-and-drop and settings verified on macOS |
 | 4. HID console and key tester | Done (2026-11-16); both verified on macOS with a real keyboard |
 | 5. Ubuntu work | Done (2026-11-16); `.deb` installed and verified on Ubuntu 26.04 with real keyboards |
-| 6. CI and docs | Done (2026-11-16) except a first CI run on GitHub |
+| 6. CI and docs | Done (2026-11-16); CI passed on GitHub for amd64 and arm64 |
 
 ## Running the app
 
@@ -201,7 +201,7 @@ Deliberate differences from the macOS app:
 - **Bootloaders appear in the log only once udev has set them up**, a few milliseconds later than the kernel reports them.
 - **An inaccessible bootloader is reported** on connect, with a pointer to the udev rules.
 
-## Step 6 — CI and docs (done, not yet run on GitHub)
+## Step 6 — CI and docs (done)
 
 Added:
 
@@ -220,9 +220,11 @@ Verified on the development laptop (Ubuntu 26.04):
 - The smoke test's command against the installed package (offscreen, no display, empty runtime and config directories): still running after 5 s, no traceback.
 - The workflow and labeler files parse, and the job has the expected steps and matrix. Not linted with actionlint.
 
+Verified on GitHub (2026-11-16): the workflow only runs on pushes to `master`, on releases and on pull requests, so it was run through a draft pull request `qt-port` → `master` on the fork (dmlz76/qmk_toolbox#1, closed afterwards; run 44000475389). Actions had first to be enabled for the fork in its Actions tab. Every job passed: both Linux jobs (about a minute each) installed PySide6 6.10.2 from the archive, passed all 118 tests, built their package, installed it with apt and kept the app running for 5 s (stderr only had Qt's "XDG_RUNTIME_DIR not set" and "propagateSizeHints" notes), and uploaded `qmk-toolbox-linux-amd64` and `qmk-toolbox-linux-arm64`. The Windows and macOS builds passed too; signing and publishing were skipped, as on every pull request. GitHub noted that `ubuntu-latest` is moving to Ubuntu 26; the job is unaffected, since it runs in its own container.
+
 Not verified:
 
-- **The workflow has not run on GitHub.** It only runs on pushes to `master`, on releases and on pull requests, so the first run needs a pull request (e.g. `qt-port` → `master` on the fork). Untested in particular: the container on the ARM runner, `setup-uv` inside the container, the publish steps' `./qmk-toolbox-linux-*/*.deb` glob.
+- The publish steps' `./qmk-toolbox-linux-*/*.deb` glob (publishing only runs on `master` pushes and releases).
 - The arm64 package with a real keyboard.
 - The readme's download links (they work once a release with the packages exists).
 
