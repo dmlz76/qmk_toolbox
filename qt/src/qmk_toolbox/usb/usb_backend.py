@@ -20,14 +20,24 @@ class PyUsbBackend:
     ``scan`` is cheap and does not open any device, so it is safe to call
     while a flasher is talking to one. ``describe`` is called once per newly
     connected device.
+
+    ``library`` is the libusb library to use; by default pyusb finds it.
     """
+
+    def __init__(self, library: str | None = None):
+        self.library = library
+        self._backend = None
 
     def scan(self) -> dict[Hashable, Any]:
         """Returns the attached devices as ``{identity: handle}``."""
         import usb.core
 
+        if self.library is not None and self._backend is None:
+            import usb.backend.libusb1
+
+            self._backend = usb.backend.libusb1.get_backend(find_library=lambda name: self.library)
         try:
-            devices = usb.core.find(find_all=True)
+            devices = usb.core.find(find_all=True, backend=self._backend)
         except usb.core.NoBackendError as error:
             raise UsbBackendError("libusb was not found; install it to detect USB devices") from error
         if sys.platform.startswith("linux"):

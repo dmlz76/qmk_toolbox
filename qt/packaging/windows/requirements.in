@@ -1,0 +1,6 @@
+# What the Windows installer bundles, besides the app itself: its dependencies
+# from pyproject.toml, and PyInstaller to build the app. Pinned with hashes in
+# requirements.txt; regenerate that with
+#   uv pip compile pyproject.toml packaging/windows/requirements.in --python-version 3.14 \
+#       --python-platform windows --generate-hashes -o packaging/windows/requirements.txt
+pyinstaller

@@ -58,12 +58,23 @@ def flashers_dir() -> Path | None:
     return bundled if bundled.is_dir() else None
 
 
+def native_resources_dir() -> Path | None:
+    """On Windows, run from a checkout: the native Windows app's flashers,
+    libusb and driver installer, which Windows has no package manager for."""
+    if sys.platform != "win32":
+        return None
+    # qt/src/qmk_toolbox/ -> <repo>/windows/QMK Toolbox/Resources
+    resources = Path(__file__).resolve().parents[3] / "windows" / "QMK Toolbox" / "Resources"
+    return resources if resources.is_dir() else None
+
+
+def _bundled_dirs() -> list[Path]:
+    return [d for d in (flashers_dir(), native_resources_dir()) if d is not None]
+
+
 def tool_dirs() -> list[Path]:
     """Places to look for flashers before ``PATH``."""
-    dirs = []
-    bundled = flashers_dir()
-    if bundled is not None:
-        dirs.append(bundled)
+    dirs = _bundled_dirs()
     if sys.platform == "darwin":
         # Apps started from Finder do not get the shell's PATH, so Homebrew's
         # directories have to be named explicitly.
@@ -74,10 +85,65 @@ def tool_dirs() -> list[Path]:
 def avrdude_conf() -> str | None:
     """The config of the bundled avrdude. A system avrdude uses its own."""
     bundled = flashers_dir()
-    if bundled is None or shutil.which("avrdude", path=str(bundled)) is None:
+    if bundled is not None and shutil.which("avrdude", path=str(bundled)) is not None:
+        conf = bundled / "avrdude.conf"
+        return str(conf) if conf.is_file() else None
+    native = native_resources_dir()
+    if native is not None and shutil.which("avrdude", path=str(native)) is not None:
+        # The native app runs its avrdude with the shared config.
+        conf = data_dir() / "avrdude.conf"
+        return str(conf) if conf.is_file() else None
+    return None
+
+
+def libusb_library() -> str | None:
+    """libusb for pyusb on Windows, where nothing installs it system-wide.
+
+    ``None`` elsewhere, and if there is none bundled: pyusb then looks for it
+    itself (on ``PATH``, on Windows).
+    """
+    if sys.platform != "win32":
         return None
-    conf = bundled / "avrdude.conf"
-    return str(conf) if conf.is_file() else None
+    for directory in _bundled_dirs():
+        library = directory / "libusb-1.0.dll"
+        if library.is_file():
+            return str(library)
+    return None
+
+
+DRIVER_INSTALLER = "qmk_driver_installer.exe"
+DRIVER_LIST = "drivers.txt"
+
+
+def driver_installer() -> tuple[Path, Path] | None:
+    """The native app's driver installer and its list of drivers, on Windows."""
+    if sys.platform != "win32":
+        return None
+    for directory in _bundled_dirs():
+        installer, drivers = directory / DRIVER_INSTALLER, directory / DRIVER_LIST
+        if installer.is_file() and drivers.is_file():
+            return installer, drivers
+    return None
+
+
+def run_driver_installer() -> bool:
+    """Starts the driver installer as administrator (Windows asks first).
+
+    It installs WinUSB or libusb drivers for the bootloaders in its list, as
+    the native Windows app does, in a console window of its own. Returns
+    whether it was started; False if it is missing or the user declined.
+    """
+    found = driver_installer()
+    if found is None:
+        return False
+    installer, drivers = found
+    import ctypes
+
+    # ShellExecute returns a value greater than 32 on success.
+    result = ctypes.windll.shell32.ShellExecuteW(
+        None, "runas", str(installer), f'--all --force "{drivers}"', str(installer.parent), 1
+    )
+    return result > 32
 
 
 def install_hint(tool: str) -> str:

@@ -8,12 +8,12 @@ A third implementation of QMK Toolbox, next to `macos/` (Swift/AppKit) and `wind
 
 - runs well on Ubuntu (target: 26.04) — this is the primary reason it exists
 - also runs on macOS, so most development and testing can happen there
-- keeps Windows possible later, but out of scope for now
+- keeps Windows possible later, but out of scope for now (changed 2026-11-18: a Windows installer was added on request, step 8)
 
 ## Decisions
 
 - **Stack:** Python + PySide6 (Qt 6). Chosen over C#/Avalonia because cross-platform libraries absorb almost all the per-OS work (see below), and over C++/Qt because the app is small.
-- **Location:** `qt/` at the repo root, a self-contained Python project (`src/` layout). `macos/` and `windows/` are not touched.
+- **Location:** `qt/` at the repo root, a self-contained Python project (`src/` layout). `macos/` and `windows/` are not touched. On Windows the port reads (never changes) the native app's `windows/QMK Toolbox/Resources/`: its `libusb-1.0.dll`, driver installer and `drivers.txt`, and from a checkout also its flashers (step 8).
 - **Structure mirrors the Swift app** (`usb/usb_device.py` ↔ `USB/USBDevice.swift`, one module per bootloader under `usb/bootloader/`), so parity changes are easy to apply across all three trees.
 - **The core is Qt-free.** Bootloader classes, the VID/PID table and the process runner have no Qt or USB-library imports, so they are unit-testable without hardware. Qt is only used in the UI layer.
 - **Flashers.** The Linux package (and the macOS app, step 7) bundles QMK's own flasher builds ([qmk_flashutils](https://github.com/qmk/qmk_flashutils): all eight tools, statically linked, for x86_64 and arm64) with their `avrdude.conf`, as the native apps bundle theirs. The release is pinned and checked against SHA-256 sums when the package is built; nothing is downloaded at run time. Run from a checkout, the app uses the flashers on `PATH` (apt, Homebrew) and says how to install a missing one. As with the native apps, the flashers' source is not shipped with the package; its `copyright` file points to qmk_flashutils at the pinned commit (decided 2026-11-16, see PROGRESS.md, step 6). Changed 2026-11-16: the first version of this plan used system flashers only, on the assumption that there were no upstream prebuilt Linux binaries; qmk_flashutils turned out to be exactly that.
@@ -29,7 +29,8 @@ A third implementation of QMK Toolbox, next to `macos/` (Swift/AppKit) and `wind
 | HID console | `hidapi` | none |
 | Serial port for Caterina / AVRISP / SAM-BA | `pyserial` `list_ports` | none |
 | LUFA Mass Storage mount point | — | small per-OS function |
-| Flasher binaries | qmk_flashutils, bundled in the package | none; from a checkout, tools on `PATH` with per-OS install hints |
+| Flasher binaries | qmk_flashutils, bundled in the package | none; from a checkout, tools on `PATH` with per-OS install hints (on Windows, the native app's) |
+| Bootloader drivers (Windows only) | the native app's `qmk_driver_installer.exe` | Windows only |
 
 ## Steps
 
@@ -40,9 +41,15 @@ A third implementation of QMK Toolbox, next to `macos/` (Swift/AppKit) and `wind
 5. **Ubuntu work** (on the Linux laptop): udev rules for non-root access, ModemManager interference with serial bootloaders, flashers, `.deb` packaging, desktop integration.
 6. **CI and docs.** Build job in `.github/workflows/build.yml`, readme, `CLAUDE.md`.
 7. **macOS app** (added 2026-11-17). An app bundle in a `.dmg`, built locally with PyInstaller: Python, Qt and qmk_flashutils' macOS flashers bundled, named "QMK Toolbox (Qt)" with its own bundle ID so that it installs next to the native app. Signed ad hoc, for the Mac that builds it; not distributed. Earlier this plan said macOS distribution was not planned; changed on request, so the port can replace the native app on the development Mac too.
+8. **Windows installer** (added 2026-11-18, after a first trial on Windows, see PROGRESS.md). An Inno Setup installer (as the native Windows app uses) around a PyInstaller app, built locally with `packaging/windows/build-installer.py`: Python, Qt, qmk_flashutils' Windows flashers, and the native app's `libusb-1.0.dll` and driver installer. Named "QMK Toolbox (Qt)" with its own AppId and `qmk-toolbox-qt.exe`, so it installs next to the native app. Decided with the user:
+   - **Alongside, not instead:** it is listed under "Open with" for `.hex`/`.bin` but never made their default, and takes `qmk:` links only if no other app handles them (as the Mac app's "Alternate" rank does).
+   - **Local build first;** a CI job on GitHub's Windows runner can follow.
+   - **Drivers** as the native app installs them: an optional installer task, and Tools > Install Drivers… in the app.
+
+   Not signed: Windows SmartScreen warns about a downloaded copy.
 
 ## Open questions
 
 - **arm64.** The package builds, and CI installs and starts it on an ARM runner, but it has not been used with a keyboard.
-- **Windows.** Still not a planned step, but tried on 2026-11-17 (see PROGRESS.md, "Windows trial"): from a checkout, with the native Windows app's libusb and flashers, it detected and flashed an Atmel DFU keyboard, and the HID console and key tester worked. Still missing: finding libusb and the flashers without environment variables, driver installation, and any packaging.
+- **Windows.** Unsigned (SmartScreen, Smart App Control on other PCs); not built in CI; no check that a bootloader has the right driver (the native app warns about that); x64 only.
 - **Upstreaming.** Undecided whether this goes to `qmk/qmk_toolbox` or stays in a fork.

@@ -18,6 +18,7 @@ import argparse
 import time
 
 from qmk_toolbox import environment
+from qmk_toolbox.usb.usb_backend import PyUsbBackend
 from qmk_toolbox.usb.usb_listener import UsbListener
 
 
@@ -35,7 +36,7 @@ def main() -> None:
         print(f"  {tool:22} {context.runner.find_tool(tool) or 'not found'}")
     print("watching for USB devices, Ctrl-C to stop\n")
 
-    listener = UsbListener(context)
+    listener = UsbListener(context, PyUsbBackend(environment.libusb_library()))
     to_reset = []
 
     def bootloader_connected(device):

@@ -13,6 +13,7 @@ Plan: [PLAN.md](PLAN.md). Update this file at the end of each working session.
 | 5. Ubuntu work | Done (2026-11-16); `.deb` installed and verified on Ubuntu 26.04 with real keyboards |
 | 6. CI and docs | Done (2026-11-16); CI passed on GitHub for amd64 and arm64 |
 | 7. macOS app | Done (2026-11-17); installed from the `.dmg`, flash, HID console and key tester verified on macOS |
+| 8. Windows installer | Done (2026-11-18); installed on Windows 11 and briefly tried; flash, HID console and key tester verified from a checkout |
 
 ## Running the app
 
@@ -42,6 +43,16 @@ packaging/macos/build-app.sh          # -> dist/QMK-Toolbox-Qt-<version>-<arch>.
 ```
 
 Open the `.dmg` and drag "QMK Toolbox (Qt)" into Applications. Needs only uv; downloads are cached in `build/downloads/`.
+
+## Building the Windows installer
+
+From `qt/`, on Windows, with uv and Inno Setup 6 (`winget install JRSoftware.InnoSetup`):
+
+```sh
+uv run --no-project --python 3.14 packaging/windows/build-installer.py   # -> dist/QMK-Toolbox-Qt-<version>-x64-setup.exe
+```
+
+Run the installer (it asks for administrator rights). Downloads are cached in `build/downloads/`.
 
 ## Running the tests
 
@@ -290,8 +301,8 @@ Setup:
   uv run qmk-toolbox
   ```
 
-  Without the `PATH` entry the window opens but logs "Cannot detect USB devices: libusb was not found".
-- **Driver.** dfu-programmer needs a WinUSB (or libusb) driver bound to the bootloader. The PC had none at first; before the flash, a libwdi-generated WinUSB driver was installed for 03EB:2FEF (`oem23.inf`, provider libwdi, as `qmk_driver_installer.exe` or Zadig create). The native app installs these with `qmk_driver_installer.exe --all --force drivers.txt` (from `Resources/`, run as administrator); the port has no equivalent.
+  Without the `PATH` entry the window opens but logs "Cannot detect USB devices: libusb was not found". (No longer needed since step 8: the app finds that folder itself, and plain `uv run qmk-toolbox` works.)
+- **Driver.** dfu-programmer needs a WinUSB (or libusb) driver bound to the bootloader. The PC had none at first; before the flash, 14 libwdi-generated WinUSB driver packages were installed within 21 s (`oem13.inf`–`oem29.inf`, 2026-11-17 23:10; 03EB:2FEF uses `oem23.inf`), which matches the native app's `qmk_driver_installer.exe --all --force drivers.txt` (from `Resources/`, run as administrator). The port can run that installer itself since step 8.
 
 Fixed (all platforms' code, found on Windows):
 
@@ -316,11 +327,50 @@ Not verified:
 - **These changes on macOS and Linux**: the tests have not been rerun there since. The single-instance protocol change in particular affects both.
 - On Windows: opening a `.hex` with the app running (only the tests and a script); serial bootloaders and COM-port matching; LUFA MS on a drive letter; any bootloader other than Atmel DFU; the key tester's Num Lock and Print Screen on a real keyboard (Windows 11 opens the Snipping Tool on PrtSc, so the app may only see the key's release, which does not mark it tested).
 
-Known gaps on Windows:
+The gaps this left on Windows (libusb and flashers only found through environment variables, no driver installation, no packaging) were closed in step 8; what is still missing is listed there.
 
-- libusb and the flashers are only found through `PATH` and `QMK_TOOLBOX_FLASHERS_DIR` (see above).
-- No driver installation.
-- No packaging, no file associations, not in CI.
+## Step 8 — Windows installer (done)
+
+Added 2026-11-18 (PLAN.md step 8, with the decisions made for it).
+
+Code (shared files, behaviour only on Windows):
+
+- `environment.native_resources_dir()` — run from a checkout on Windows, the native app's `windows/QMK Toolbox/Resources/`. Flashers are looked for there after the bundled ones; `libusb_library()` and `driver_installer()` look in the bundled flashers directory first, then there. `avrdude_conf()` gives the native avrdude the shared `common/avrdude.conf`, as the native app does.
+- `usb_backend.PyUsbBackend(library)` — loads that libusb; on Windows pyusb would otherwise only search `PATH`. The main window and `tools/watch_devices.py` pass `environment.libusb_library()`. Plain `uv run qmk-toolbox` now works from a checkout on Windows, without the `set` lines of the trial.
+- Tools > Install Drivers… (Windows only) — asks, then starts `qmk_driver_installer.exe --all --force drivers.txt` through `ShellExecute` with "runas" (a UAC prompt), as the native app's menu item does. The native app also offers this on its first start; this port does not (the installer offers it instead).
+- `app.window_icon()` — the QMK icon on Windows (bundled `.ico`, or the native app's in a checkout); the window had Qt's default icon before.
+- Tests for the new lookups and for `PyUsbBackend` with a given library. The bundled-avrdude test now makes its fake `avrdude` executable: since `shutil.which` is used it needs to be on macOS and Linux. It passed on Windows only because Windows treats every file as executable, so **the tests as pushed in 1575bd6 fail that test on macOS and Linux**; this step fixes it.
+
+`packaging/windows/`:
+
+- `build-installer.py` — a venv with the pinned dependencies (`requirements.txt`, resolved for Windows: the same versions as the macOS app, with `pefile` and `pywin32-ctypes` instead of `macholib`), qmk_flashutils 20260711 `windowsX64` checked against `SHA256SUMS` (the value matches the digest GitHub lists for the asset), PyInstaller, a check that the flashers, libusb, driver installer, data and hidapi are in the app, then Inno Setup. About 60 s. Written in Python rather than PowerShell, which would need its script execution policy changed; Python 3.14's `tarfile` reads the `.tar.zst`.
+- `qmk-toolbox.spec` — a one-folder app, `qmk-toolbox-qt.exe` with the native app's icon and a version resource ("QMK Toolbox (Qt)", shown in Task Manager and file properties). The eight flashers with their `avrdude.conf`, and the native app's `libusb-1.0.dll`, `qmk_driver_installer.exe` and `drivers.txt`, go in `_internal/qmk_toolbox/flashers/` (qmk_flashutils links libusb into its tools and has no driver installer); the data files and icon in `_internal/qmk_toolbox/data/`.
+- `qmk-toolbox.iss` — its own AppId, `Program Files\QMK Toolbox (Qt)`, a Start menu entry, an optional desktop icon, and an "Install drivers" task (ticked by default) that runs the driver installer during setup. "Open with" entries for `.hex`/`.bin` (`OpenWithProgids` and `Applications\qmk-toolbox-qt.exe`), never the default. `qmk:` links only if no other app handles them, or this one already does (decided once when setup starts). An update first deletes `_internal`, so no files of the previous version stay behind. The app started at the end of setup runs as the original user, not elevated.
+- The app is 112 MB in 187 files; the installer 33.5 MB.
+
+Verified on the Windows PC (2026-11-18, Smart App Control on):
+
+- 123 tests pass, 2 skipped.
+- From a checkout, with no environment variables: libusb, the flashers, `common/avrdude.conf` and the driver installer are found, and the window logs no libusb error.
+- The built app, run directly: version 0.3.4 shown (package metadata bundled), no libusb error, the QMK icon in the title bar, and the version resource on the `.exe`.
+- Smart App Control let everything run: the locally built app and installer, qmk_flashutils' Windows tools (unsigned; all eight started), and the native app's flashers and libusb. `qmk_driver_installer.exe` requires elevation, so it only runs through UAC.
+- **Installed (by the user):** default options, and the app started at the end of setup; the user tried it briefly and reported it working (which functions were tried was not recorded). Afterwards: the files in `C:\Program Files\QMK Toolbox (Qt)`, the Start menu entry, "QMK Toolbox (Qt) 0.3.4" (publisher QMK) in Apps, "Open with" entries for `.hex`/`.bin` with no default changed, and `qmk:` links registered to this app (the native app is not installed on that PC).
+
+Not verified:
+
+- Whether the installer's driver task ran: the drivers were already installed the day before, and installing the same packages again leaves no new driver package.
+- Tools > Install Drivers… beyond finding the installer.
+- With the installed app: a flash with qmk_flashutils' dfu-programmer in particular; opening a `.hex` from Explorer; a `qmk:` link from a browser; installing over an earlier version; uninstalling.
+- A copy downloaded from the internet (SmartScreen, and Smart App Control, which treats downloaded files more strictly); other PCs; Windows 10.
+- These changes on macOS and Linux (the tests have not been run there since the Windows trial).
+
+Known limitations:
+
+- **Unsigned** (app and installer). Fine on the PC that built it; a downloaded copy gets SmartScreen warnings and may be blocked by Smart App Control.
+- **Not built in CI;** x64 only.
+- **No per-device driver check.** The native app logs when a bootloader has the wrong driver; this port does not know which driver a device has.
+- **libusb is the native app's copy** (its version is not recorded there); the driver list is the native app's `drivers.txt`, so a new entry there reaches this installer too.
+- The installer shows no licence and bundles no licence texts for the flashers (the Linux package's `copyright` lists them).
 
 ## Background
 

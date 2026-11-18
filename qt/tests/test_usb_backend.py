@@ -22,12 +22,33 @@ def test_on_linux_devices_are_reported_once_udev_has_set_them_up(monkeypatch, tm
     monkeypatch.setattr(usb_backend.sys, "platform", "linux")
     monkeypatch.setattr(udev, "UDEV_DATA_DIR", tmp_path)
     devices = [handle(1, 1, None), handle(1, 9, (2,))]
-    monkeypatch.setattr(usb.core, "find", lambda find_all: iter(devices))
+    monkeypatch.setattr(usb.core, "find", lambda find_all, backend=None: iter(devices))
     (tmp_path / "c189:0").touch()
 
     assert [key[:2] for key in PyUsbBackend().scan()] == [(1, 1)]
     (tmp_path / "c189:8").touch()
     assert [key[:2] for key in PyUsbBackend().scan()] == [(1, 1), (1, 9)]
+
+
+def test_a_given_libusb_library_is_used(monkeypatch):
+    import usb.backend.libusb1
+
+    monkeypatch.setattr(usb_backend.sys, "platform", "win32")
+    backend = object()
+    requested = []
+
+    def get_backend(find_library):
+        requested.append(find_library("usb-1.0"))
+        return backend
+
+    monkeypatch.setattr(usb.backend.libusb1, "get_backend", get_backend)
+    used = []
+    monkeypatch.setattr(usb.core, "find", lambda find_all, backend=None: used.append(backend) or iter([]))
+    scanner = PyUsbBackend("C:/toolbox/libusb-1.0.dll")
+    scanner.scan()
+    scanner.scan()
+    assert requested == ["C:/toolbox/libusb-1.0.dll"]  # loaded once
+    assert used == [backend, backend]
 
 
 def test_names_are_read_from_sysfs_on_linux(monkeypatch, tmp_path):

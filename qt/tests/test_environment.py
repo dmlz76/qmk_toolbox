@@ -101,9 +101,38 @@ def test_bundled_flashers_come_first_with_their_avrdude_config(no_flashers, monk
     # A bundled config is only passed to the bundled avrdude.
     (tmp_path / "avrdude.conf").touch()
     assert environment.avrdude_conf() is None
-    (tmp_path / "avrdude").touch()
+    (tmp_path / "avrdude").touch(mode=0o755)
     assert environment.avrdude_conf() == str(tmp_path / "avrdude.conf")
     assert environment.create_flash_context().avrdude_conf == str(tmp_path / "avrdude.conf")
+
+
+def test_on_windows_libusb_and_the_driver_installer_come_with_the_flashers(monkeypatch, tmp_path):
+    monkeypatch.setenv("QMK_TOOLBOX_FLASHERS_DIR", str(tmp_path))
+    monkeypatch.setattr(environment.sys, "platform", "win32")
+    for name in ("libusb-1.0.dll", "qmk_driver_installer.exe", "drivers.txt"):
+        (tmp_path / name).touch()
+    assert environment.libusb_library() == str(tmp_path / "libusb-1.0.dll")
+    assert environment.driver_installer() == (tmp_path / "qmk_driver_installer.exe", tmp_path / "drivers.txt")
+
+    monkeypatch.setattr(environment.sys, "platform", "linux")
+    assert environment.libusb_library() is None
+    assert environment.driver_installer() is None
+
+
+def test_on_windows_a_checkout_uses_the_native_apps_resources(monkeypatch):
+    monkeypatch.delenv("QMK_TOOLBOX_FLASHERS_DIR", raising=False)
+    monkeypatch.setattr(environment.sys, "platform", "win32")
+    resources = environment.native_resources_dir()
+    assert resources is not None and resources.parts[-3:] == ("windows", "QMK Toolbox", "Resources")
+    assert environment.tool_dirs() == [resources]
+    assert environment.libusb_library() == str(resources / "libusb-1.0.dll")
+    assert environment.driver_installer() == (resources / "qmk_driver_installer.exe", resources / "drivers.txt")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the native app's avrdude.exe is only executable on Windows")
+def test_the_native_apps_avrdude_gets_the_shared_config(monkeypatch):
+    monkeypatch.delenv("QMK_TOOLBOX_FLASHERS_DIR", raising=False)
+    assert environment.avrdude_conf() == str(environment.data_dir() / "avrdude.conf")
 
 
 @pytest.fixture

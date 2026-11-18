@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 from importlib import metadata
 from typing import Callable
@@ -25,7 +26,7 @@ from .. import environment, firmware
 from ..mcu_list import load_mcu_list
 from ..message_type import MessageType
 from ..usb.bootloader.bootloader_device import BootloaderDevice
-from ..usb.usb_backend import UsbBackendError
+from ..usb.usb_backend import PyUsbBackend, UsbBackendError
 from ..usb.usb_device import UsbDevice
 from ..usb.usb_listener import UsbListener
 from .hid_console_window import HidConsoleWindow
@@ -70,7 +71,9 @@ class MainWindow(QMainWindow):
     def __init__(self, listener: UsbListener | None = None, settings: QSettings | None = None):
         super().__init__()
         self.settings = settings if settings is not None else QSettings("QMK", "QMK Toolbox")
-        self.listener = listener if listener is not None else UsbListener(environment.create_flash_context())
+        if listener is None:
+            listener = UsbListener(environment.create_flash_context(), PyUsbBackend(environment.libusb_library()))
+        self.listener = listener
 
         self._busy = False
         self._auto_flash_pending = False
@@ -200,6 +203,9 @@ class MainWindow(QMainWindow):
         tools_menu.addSeparator()
         tools_menu.addAction("&Key Tester", self.show_key_tester)
         tools_menu.addAction("&HID Console", self.show_hid_console)
+        if sys.platform == "win32":
+            tools_menu.addSeparator()
+            tools_menu.addAction("Install &Drivers…", self.install_drivers)
 
         help_menu = self.menuBar().addMenu("&Help")
         about_action = help_menu.addAction("&About QMK Toolbox", self._show_about)
@@ -440,6 +446,23 @@ class MainWindow(QMainWindow):
         if self.key_tester_window is None:
             self.key_tester_window = KeyTesterWindow()
         _bring_to_front(self.key_tester_window)
+
+    def install_drivers(self) -> None:
+        """Windows: bootloaders need WinUSB or libusb drivers for the flashers to reach them."""
+        if environment.driver_installer() is None:
+            self.log_text_view.log_error("The driver installer was not found")
+            return
+        answer = QMessageBox.question(
+            self,
+            "Driver installation",
+            "Install drivers for the bootloaders QMK Toolbox supports? This needs administrator rights.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if environment.run_driver_installer():
+            self.log_text_view.log_info("Driver installation started; it runs in a window of its own")
+        else:
+            self.log_text_view.log_error("Driver installation was not started")
 
     def show_hid_console(self) -> None:
         if self.hid_console_window is None:

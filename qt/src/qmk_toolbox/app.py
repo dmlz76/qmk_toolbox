@@ -5,9 +5,26 @@ import sys
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from . import environment
 from .ui.file_open_handler import FileOpenHandler
 from .ui.main_window import MainWindow
 from .ui.single_instance import SingleInstance
+
+
+def window_icon() -> QIcon:
+    # Installed by the Linux package. macOS takes the icon from the app bundle.
+    icon = QIcon.fromTheme("qmk-toolbox")
+    if not icon.isNull():
+        return icon
+    # Windows: bundled with the app, or the native app's in a checkout.
+    candidates = [environment.data_dir() / "qmk-toolbox.ico"]
+    native = environment.native_resources_dir()
+    if native is not None:
+        candidates.append(native / "output.ico")
+    for candidate in candidates:
+        if candidate.is_file():
+            return QIcon(str(candidate))
+    return icon
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,8 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("QMK Toolbox")
     app.setOrganizationName("QMK")
     app.setDesktopFileName("qmk-toolbox")
-    # Installed by the Linux package; elsewhere this is a null icon and changes nothing.
-    app.setWindowIcon(QIcon.fromTheme("qmk-toolbox"))
+    app.setWindowIcon(window_icon())
 
     # A firmware file or qmk: link to open, e.g. from a file manager or the browser.
     arguments = app.arguments()[1:]
