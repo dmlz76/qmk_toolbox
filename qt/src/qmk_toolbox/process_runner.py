@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import threading
@@ -37,10 +36,11 @@ class ProcessRunner:
         self.cwd = str(cwd) if cwd is not None else None
 
     def find_tool(self, command: str) -> str | None:
+        # which() also finds "avrdude.exe" for "avrdude" on Windows.
         for directory in self.tool_dirs:
-            candidate = directory / command
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                return str(candidate)
+            found = shutil.which(command, path=str(directory))
+            if found is not None:
+                return found
         return shutil.which(command)
 
     def run(self, command: str, args: list[str], output: Output, timeout: float | None = None) -> int | None:

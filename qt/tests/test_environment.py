@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -21,7 +22,7 @@ def port(device, vid, pid, location):
 def test_data_dir_defaults_to_the_repo_common_directory(monkeypatch):
     monkeypatch.delenv("QMK_TOOLBOX_DATA_DIR", raising=False)
     assert (environment.data_dir() / "mcu-list.txt").is_file()
-    assert environment.data_file("reset.eep").endswith("/common/reset.eep")
+    assert Path(environment.data_file("reset.eep")).parts[-2:] == ("common", "reset.eep")
 
 
 def test_data_dir_can_be_overridden(monkeypatch, tmp_path):

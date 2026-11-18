@@ -26,9 +26,11 @@ def test_every_native_code_maps_to_a_drawn_key():
     drawn = {key.id for key in key_layout.KEYS}
     assert set(key_layout.LINUX_SCAN_CODES.values()) <= drawn
     assert set(key_layout.MACOS_VIRTUAL_KEYS.values()) <= drawn
-    # Linux can reach every drawn key; a Mac keyboard has no single code that is missing either.
+    assert set(key_layout.WINDOWS_SCAN_CODES.values()) <= drawn
+    # Linux and Windows can reach every drawn key; a Mac keyboard has no single code that is missing either.
     assert set(key_layout.LINUX_SCAN_CODES.values()) == drawn
     assert set(key_layout.MACOS_VIRTUAL_KEYS.values()) == drawn
+    assert set(key_layout.WINDOWS_SCAN_CODES.values()) == drawn
 
 
 def test_keys_do_not_overlap():
@@ -45,7 +47,14 @@ def test_key_lookup_is_by_position():
     assert key_layout.key_id_for(0, 0x00, "darwin") == "a"
     assert key_layout.key_id_for(0, 0x3C, "darwin") == "right_shift"
     assert key_layout.key_id_for(0, 0x3F, "darwin") is None    # fn has no key on the drawn keyboard
-    assert key_layout.key_id_for(30, 65, "win32") is None
+    assert key_layout.key_id_for(0x1E, 0x41, "win32") == "a"
+    assert key_layout.key_id_for(0x1D, 0, "win32") == "left_ctrl"
+    assert key_layout.key_id_for(0xE01D, 0, "win32") == "right_ctrl"   # extended
+    assert key_layout.key_id_for(0x45, 0, "win32") == "pause"
+    assert key_layout.key_id_for(0xE045, 0, "win32") == "num_lock"
+    assert key_layout.key_id_for(0x1C, 0, "win32") == "enter"
+    assert key_layout.key_id_for(0xE01C, 0, "win32") == "kp_enter"
+    assert key_layout.key_id_for(30, 65, "freebsd") is None
 
 
 # MARK: Key tester

@@ -126,10 +126,31 @@ MACOS_VIRTUAL_KEYS = {
 }
 
 
+# Windows scan codes, as Qt reports them: the key's scan code set 1 make code
+# from the keyboard message, with 0xE000 added for "extended" keys (those
+# sent with an E0 prefix). Set 1 codes are the numbers the Linux kernel uses for the main
+# block, except that Windows reports Pause (E1 1D 45) as 45 and gives Num Lock
+# (45) the extended flag instead.
+_WINDOWS_EXTENDED = {
+    0x1C: "kp_enter", 0x1D: "right_ctrl", 0x35: "kp_slash", 0x37: "print_screen", 0x38: "right_alt",
+    0x45: "num_lock", 0x46: "pause",  # E0 46 is Ctrl+Pause (Break)
+    0x47: "home", 0x48: "up", 0x49: "page_up", 0x4B: "left", 0x4D: "right", 0x4F: "end", 0x50: "down",
+    0x51: "page_down", 0x52: "insert", 0x53: "delete", 0x5B: "left_gui", 0x5C: "right_gui", 0x5D: "menu",
+}
+WINDOWS_SCAN_CODES = {
+    **{code: key_id for code, key_id in _EVDEV.items() if code <= 0x58},
+    0x45: "pause",
+    0x54: "print_screen",  # Alt+PrtSc (SysRq)
+    **{0xE000 | code: key_id for code, key_id in _WINDOWS_EXTENDED.items()},
+}
+
+
 def key_id_for(scan_code: int, virtual_key: int, platform: str = sys.platform) -> str | None:
     """The key at the physical position a native key event came from, if it is on the drawn keyboard."""
     if platform == "darwin":
         return MACOS_VIRTUAL_KEYS.get(virtual_key)
     if platform.startswith("linux"):
         return LINUX_SCAN_CODES.get(scan_code)
+    if platform == "win32":
+        return WINDOWS_SCAN_CODES.get(scan_code)
     return None

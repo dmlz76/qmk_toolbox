@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import urllib.request
+from urllib.request import url2pathname
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -20,7 +21,8 @@ def local_path(path: str) -> str:
     if path.startswith("file:"):
         parsed = urlparse(path)
         if parsed.netloc in ("", "localhost"):
-            return unquote(parsed.path)
+            # url2pathname also turns "/C:/Users/..." into "C:\Users\..." on Windows.
+            return url2pathname(parsed.path)
     return path
 
 

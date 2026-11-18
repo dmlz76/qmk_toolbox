@@ -143,7 +143,7 @@ Added:
 
 - `hid/hid_device.py`, `hid/hid_backend.py`, `hid/hid_listener.py` — console (usage page `0xFF31`, usage `0x0074`) and raw HID (`0xFF60` / `0x0061`) devices via hidapi. Console devices are opened non-blocking; raw devices are only reported. Like the USB listener there are no threads: `poll()` finds devices, `read()` drains pending reports and assembles them into lines.
 - `ui/hid_console_window.py` — device picker with "(All connected devices)", coloured log, Clear. Listens only while the window is open (polls every second, reads every 20 ms).
-- `ui/key_layout.py`, `ui/key_tester_window.py` — a full-size ANSI keyboard with the extra ISO key, drawn in one widget. Keys light yellow while held and stay green once pressed. Keys are identified by physical position: scan codes on Linux (evdev code + 8), virtual key codes on macOS. The window takes every key for itself (Tab, Esc, shortcuts) and shows the native codes of the last key.
+- `ui/key_layout.py`, `ui/key_tester_window.py` — a full-size ANSI keyboard with the extra ISO key, drawn in one widget. Keys light yellow while held and stay green once pressed. Keys are identified by physical position: scan codes on Linux (evdev code + 8), virtual key codes on macOS, scan codes on Windows (set 1, added 2026-11-18, see "Windows trial"). The window takes every key for itself (Tab, Esc, shortcuts) and shows the native codes of the last key.
 - Tools menu: Key Tester and HID Console.
 
 Verified on macOS: 103 unit tests pass (console line assembly including split UTF-8, two keyboards, a device that stops answering or cannot be opened, key lookup tables, key tester state and painting). Both windows were launched and checked by screenshot. hidapi enumerated the Mac's 37 HID interfaces in about 4 ms and correctly found no console devices.
@@ -153,7 +153,7 @@ Verified on hardware (2026-11-16, macOS):
 - **Key tester:** every key on the mini-mighty-kbd-wireless was detected at the correct position, modifiers included.
 - **HID console:** console-enabled firmware was flashed to the keyboard with this app, and the HID Console window then showed "HID console connected: Dimitrix LLC mini-mighty-kbd-wireless (04D8:FFF1:0100)" followed by the keyboard's live output (`keyboard_report: ...` lines), one line per message.
 
-Not verified: two console devices at once and raw HID devices on real hardware (unit tests only).
+Not verified: two console devices at once and raw HID devices on real hardware (unit tests only). Later, on Windows (2026-11-18), a raw HID device (a wireless dongle) was detected and reported on real hardware; see "Windows trial".
 
 Linux was verified in step 5.
 
@@ -167,7 +167,7 @@ Possible improvement, raised 2026-11-16 and deferred: on macOS, label the key te
 Known limitations:
 
 - **On Linux the `hidraw` module is tried before `hid`.** With cython-hidapi the `hid` module uses libusb there, which detaches the keyboard from the kernel while the console is open (on Ubuntu 26.04 it also found no devices at all). Both the PyPI wheel and Ubuntu's `python3-hid` ship `hidraw`.
-- **The key tester does nothing on Windows** (no scan-code table).
+- **The key tester did nothing on Windows** (no scan-code table). Added 2026-11-18; see "Windows trial".
 
 ## Step 5 — Ubuntu (done)
 
@@ -273,6 +273,54 @@ Known limitations:
 - **libusb comes from the build Mac's Homebrew**, collected by PyInstaller's pyusb hook (`brew install libusb` is needed to build). It is LGPL-2.1, linked dynamically. The build script fails if libusb, hidapi, the flashers or the data files are missing from the app, or if anything in it links to a library outside the app and macOS (checked against Homebrew's own `dfu-util`, which it flags).
 - **Not built in CI.**
 - The key tester still labels the Mac's Option and Command keys Alt and GUI (deferred in step 4).
+
+## Windows trial (2026-11-17, not a planned step)
+
+A first run on a Windows PC (Windows 11 Home 10.0.26200, x86_64), from a checkout. Windows is still out of scope in PLAN.md; this checked how far the port gets there.
+
+Setup:
+
+- **Smart App Control is on** on that PC, and blocks uv's own Python downloads (python-build-standalone builds are unsigned): querying them fails with exit status `0xc0e90002`. Python 3.14.10 from python.org (signed, `winget install Python.Python.3.14 --scope user`) runs, and `.venv` was created with it (`uv run --python 3.14`). uv's blocked download was uninstalled afterwards, so uv only finds the python.org one.
+- **libusb and flashers** come from the native Windows app's `windows/QMK Toolbox/Resources/` (`libusb-1.0.dll`, dfu-programmer 1.1.0, dfu-util 0.11, avrdude, ...); Smart App Control lets them run. The app does not look there by itself yet, so for now (CMD, from `qt/`):
+
+  ```bat
+  set "RES=C:\path\to\qmk_toolbox\windows\QMK Toolbox\Resources"
+  set "PATH=%RES%;%PATH%"
+  set "QMK_TOOLBOX_FLASHERS_DIR=%RES%"
+  uv run qmk-toolbox
+  ```
+
+  Without the `PATH` entry the window opens but logs "Cannot detect USB devices: libusb was not found".
+- **Driver.** dfu-programmer needs a WinUSB (or libusb) driver bound to the bootloader. The PC had none at first; before the flash, a libwdi-generated WinUSB driver was installed for 03EB:2FEF (`oem23.inf`, provider libwdi, as `qmk_driver_installer.exe` or Zadig create). The native app installs these with `qmk_driver_installer.exe --all --force drivers.txt` (from `Resources/`, run as administrator); the port has no equivalent.
+
+Fixed (all platforms' code, found on Windows):
+
+- `firmware.local_path` used the URL's path as is, so `file:///C:/Users/...` became `/C:/Users/...` and later `C:\C:\Users\...`. Now `url2pathname`.
+- `ProcessRunner.find_tool` and `environment.avrdude_conf` looked for `<dir>/avrdude`; on Windows the file is `avrdude.exe`. Both now use `shutil.which(tool, path=dir)`, which adds Windows' extensions and checks the executable bit elsewhere.
+- `environment.find_mount_point` also looks at drive letters on Windows (`mount_volumes()`); `mount_roots()` is empty there.
+- `ui/single_instance.py`: on Windows (named pipes) the running instance accepted the connection, but whatever it had not read when the second launch disconnected was lost, so a hand-over could arrive empty. The message is now a line ending in `\n`; the running instance reads until the newline and then closes the connection, and the second launch waits for that close (up to 1 s) instead of disconnecting first. The pipe name on Windows is `qmk-toolbox-<user>`: the runtime-directory path used elsewhere contains a backslash, which Windows does not allow in pipe names.
+- **Key tester on Windows** (added 2026-11-18; it did nothing there before): `key_layout.WINDOWS_SCAN_CODES`, keyed by Qt's `nativeScanCode()`. That is the key's scan code set 1 make code, the same numbers as the Linux kernel's codes for the main block, with `0xE000` added for extended (E0-prefixed) keys. The prefix was checked with keys injected through `SendInput`: right Ctrl came through as `E01D`, Up as `E048`; it is not the `0x100` of the raw keyboard message. Pause is `45` and Num Lock `E045`, from Windows' documentation (Pause later confirmed on hardware); injected events cannot confirm those two (they came through as `0` and `E000`). Also mapped: `54` (Alt+PrtSc) to PrtSc and `E046` (Ctrl+Pause) to Pause.
+- Tests: fake flashers are `.cmd` files on Windows (no shebang lines); the single-instance tests start the second launch as a real process (with both ends in one process, Windows' pipes still lost messages now and then, about 1 in 30), and the stale-socket test is skipped on Windows (a named pipe goes away with its process); path assertions no longer assume `/`.
+
+Verified on Windows:
+
+- 119 tests pass, 2 skipped (the POSIX `local_path` test and the stale-socket test), in 10 consecutive full runs.
+- Single-instance hand-over between two real processes: 30 of 30 arrived, each in about 10 ms.
+- The window starts with the full startup log, light theme, no errors.
+- **Flash (hardware):** a mini-mighty-kbd (ATmega16U2, Atmel DFU 03EB:2FEF) was detected as "ATMEL ATmega16u2 DFU" (so libusb could read its strings through WinUSB), erased, flashed, validated and reset with the native app's dfu-programmer 1.1.0; the reset returned by itself, and the disconnect was logged.
+- **HID console (hardware, 2026-11-18):** the HID Console window reported "HID console connected: Dimitrix LLC mini-mighty-kbd-wireless (04D8:FFF1:0100)" and showed its `keyboard_report:` lines live, one per report (typing q w e r t y gave press and release lines for each). It also reported "Raw HID device connected: dimitrix llc mini-mighty-dongle (04D8:FFF2:0100)", the first raw HID device seen on real hardware on any platform (step 4 had only unit tests for it). No driver was needed for either: Windows' own HID driver serves them.
+- **Key tester (hardware, 2026-11-18):** every key of the mini-mighty-kbd lit up in the right place, Pause included, so Windows' documented code for it (`45`) is right.
+
+Not verified:
+
+- **These changes on macOS and Linux**: the tests have not been rerun there since. The single-instance protocol change in particular affects both.
+- On Windows: opening a `.hex` with the app running (only the tests and a script); serial bootloaders and COM-port matching; LUFA MS on a drive letter; any bootloader other than Atmel DFU; the key tester's Num Lock and Print Screen on a real keyboard (Windows 11 opens the Snipping Tool on PrtSc, so the app may only see the key's release, which does not mark it tested).
+
+Known gaps on Windows:
+
+- libusb and the flashers are only found through `PATH` and `QMK_TOOLBOX_FLASHERS_DIR` (see above).
+- No driver installation.
+- No packaging, no file associations, not in CI.
 
 ## Background
 

@@ -44,5 +44,5 @@ A third implementation of QMK Toolbox, next to `macos/` (Swift/AppKit) and `wind
 ## Open questions
 
 - **arm64.** The package builds, and CI installs and starts it on an ARM runner, but it has not been used with a keyboard.
-- **Windows.** Out of scope; libusb enumeration and driver handling there need separate investigation.
+- **Windows.** Still not a planned step, but tried on 2026-11-17 (see PROGRESS.md, "Windows trial"): from a checkout, with the native Windows app's libusb and flashers, it detected and flashed an Atmel DFU keyboard, and the HID console and key tester worked. Still missing: finding libusb and the flashers without environment variables, driver installation, and any packaging.
 - **Upstreaming.** Undecided whether this goes to `qmk/qmk_toolbox` or stays in a fork.

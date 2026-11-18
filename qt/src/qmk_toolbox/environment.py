@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import getpass
 import os
+import shutil
+import string
 import sys
 from pathlib import Path
 
@@ -72,7 +74,7 @@ def tool_dirs() -> list[Path]:
 def avrdude_conf() -> str | None:
     """The config of the bundled avrdude. A system avrdude uses its own."""
     bundled = flashers_dir()
-    if bundled is None or not (bundled / "avrdude").is_file():
+    if bundled is None or shutil.which("avrdude", path=str(bundled)) is None:
         return None
     conf = bundled / "avrdude.conf"
     return str(conf) if conf.is_file() else None
@@ -106,10 +108,27 @@ def find_serial_port(usb_device: UsbDevice) -> str | None:
 
 
 def mount_roots() -> list[Path]:
+    """Directories whose subdirectories are mounted volumes."""
+    if sys.platform == "win32":
+        return []
     if sys.platform == "darwin":
         return [Path("/Volumes")]
     user = getpass.getuser()
     return [Path("/media") / user, Path("/run/media") / user, Path("/media"), Path("/mnt")]
+
+
+def mount_volumes() -> list[Path]:
+    volumes = []
+    if sys.platform == "win32":
+        # Drive letters are the volumes themselves.
+        drives = os.listdrives() if hasattr(os, "listdrives") else [f"{letter}:\\" for letter in string.ascii_uppercase]
+        volumes += [Path(drive) for drive in drives]
+    for root in mount_roots():
+        try:
+            volumes += sorted(path for path in root.iterdir() if path.is_dir())
+        except OSError:
+            continue
+    return volumes
 
 
 def find_mount_point(usb_device: UsbDevice) -> str | None:
@@ -119,17 +138,12 @@ def find_mount_point(usb_device: UsbDevice) -> str | None:
     EEPROM.BIN), not traced back to the USB device, so with two such
     bootloaders attached both resolve to the same volume.
     """
-    for root in mount_roots():
+    for volume in mount_volumes():
         try:
-            volumes = sorted(path for path in root.iterdir() if path.is_dir())
+            if (volume / "FLASH.BIN").is_file() and (volume / "EEPROM.BIN").is_file():
+                return str(volume)
         except OSError:
             continue
-        for volume in volumes:
-            try:
-                if (volume / "FLASH.BIN").is_file() and (volume / "EEPROM.BIN").is_file():
-                    return str(volume)
-            except OSError:
-                continue
     return None
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import sys
 
 from PySide6.QtCore import QObject, QStandardPaths, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
@@ -13,8 +14,9 @@ TIMEOUT_MS = 1000
 def default_server_name() -> str:
     # The runtime directory is private to the user; elsewhere Qt puts the
     # socket in the temporary directory, so the name includes the user.
+    # On Windows the name is a named pipe's, which cannot hold a path.
     runtime_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.RuntimeLocation)
-    if runtime_dir:
+    if runtime_dir and sys.platform != "win32":
         return os.path.join(runtime_dir, "qmk-toolbox")
     return f"qmk-toolbox-{getpass.getuser()}"
 
@@ -41,11 +43,14 @@ class SingleInstance(QObject):
         if not socket.waitForConnected(TIMEOUT_MS):
             return False
         message = {"arguments": arguments, "activation_token": os.environ.get("XDG_ACTIVATION_TOKEN", "")}
-        socket.write(json.dumps(message).encode())
+        socket.write((json.dumps(message) + "\n").encode())
         socket.flush()
-        socket.disconnectFromServer()
-        if socket.state() != QLocalSocket.LocalSocketState.UnconnectedState:
-            socket.waitForDisconnected(TIMEOUT_MS)
+        socket.waitForBytesWritten(TIMEOUT_MS)
+        # Wait for the running instance to close the connection once it has
+        # read the message: on Windows, whatever it has not read yet when this
+        # end disconnects is lost.
+        if not socket.waitForDisconnected(TIMEOUT_MS):
+            socket.disconnectFromServer()
         return True
 
     def listen(self) -> bool:
@@ -61,11 +66,12 @@ class SingleInstance(QObject):
 
     def _accept(self) -> None:
         while (socket := self._server.nextPendingConnection()) is not None:
-            # The other launch writes one message and disconnects straight
-            # away, so this does not hold up the UI.
-            if socket.state() != QLocalSocket.LocalSocketState.UnconnectedState:
-                socket.waitForDisconnected(TIMEOUT_MS)
+            # The other launch writes one line straight away, so this does not
+            # hold up the UI. Closing the connection tells it the line was read.
             data = socket.readAll().data()
+            while not data.endswith(b"\n") and socket.waitForReadyRead(TIMEOUT_MS):
+                data += socket.readAll().data()
+            socket.disconnectFromServer()
             socket.deleteLater()
             try:
                 message = json.loads(data)

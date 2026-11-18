@@ -1,4 +1,5 @@
 import functools
+import sys
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -14,11 +15,19 @@ def test_is_firmware_file():
     assert not firmware.is_firmware_file("")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX paths")
 def test_local_path():
     assert firmware.local_path("file:///home/me/My%20Board.hex") == "/home/me/My Board.hex"
     assert firmware.local_path("file://localhost/tmp/fw.bin") == "/tmp/fw.bin"
     assert firmware.local_path("/tmp/fw.bin") == "/tmp/fw.bin"
     assert firmware.local_path("file://server/share/fw.bin") == "file://server/share/fw.bin"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows paths")
+def test_local_path_on_windows():
+    assert firmware.local_path("file:///C:/Users/me/My%20Board.hex") == r"C:\Users\me\My Board.hex"
+    assert firmware.local_path("file://localhost/C:/fw.bin") == r"C:\fw.bin"
+    assert firmware.local_path(r"C:\fw.bin") == r"C:\fw.bin"
 
 
 def test_unwrap_qmk_url():
