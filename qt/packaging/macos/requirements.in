@@ -1,0 +1,6 @@
+# What the macOS app bundles, besides the app itself: its dependencies from
+# pyproject.toml, and PyInstaller to build the bundle. Pinned with hashes in
+# requirements.txt; regenerate that with
+#   uv pip compile pyproject.toml packaging/macos/requirements.in --python-version 3.14 \
+#       --generate-hashes -o packaging/macos/requirements.txt
+pyinstaller

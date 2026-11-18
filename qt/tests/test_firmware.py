@@ -28,6 +28,14 @@ def test_unwrap_qmk_url():
     assert firmware.unwrap_qmk_url("https://example.com/fw.hex") is None
 
 
+def test_unwrap_qmk_url_as_qt_passes_it_on():
+    from PySide6.QtCore import QUrl
+
+    for link in ("qmk://https://example.com/fw.hex", "qmk://http://example.com/fw.hex"):
+        through_qt = QUrl(link).toString(QUrl.ComponentFormattingOption.FullyEncoded)
+        assert firmware.unwrap_qmk_url(through_qt) == link[len("qmk://"):]
+
+
 @pytest.fixture
 def server(tmp_path):
     served = tmp_path / "served"

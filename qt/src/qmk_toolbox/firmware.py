@@ -31,7 +31,14 @@ def unwrap_qmk_url(url: str) -> str | None:
     """
     for prefix in ("qmk://", "qmk:"):
         if url.startswith(prefix):
-            return url[len(prefix):]
+            inner = url[len(prefix):]
+            # Qt reads "https:" in "qmk://https://..." as a host with an empty
+            # port and drops the colon, so links macOS hands over through Qt
+            # arrive as "qmk://https//...". Put it back.
+            for scheme in ("https", "http"):
+                if inner.startswith(scheme + "//"):
+                    return f"{scheme}://{inner[len(scheme) + 2:]}"
+            return inner
     return None
 
 

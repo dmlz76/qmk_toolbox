@@ -337,3 +337,30 @@ def test_tools_menu_opens_the_other_windows(ui):
 
     ui.window.close()
     assert not key_tester.isVisible() and not hid_console.isVisible()
+
+
+def test_files_and_links_opened_by_macos(ui, monkeypatch):
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QFileOpenEvent
+
+    from qmk_toolbox import firmware
+    from qmk_toolbox.ui.file_open_handler import FileOpenHandler
+
+    downloads = []
+    monkeypatch.setattr(firmware, "download_firmware", lambda url, dest, timeout=30.0: downloads.append(url) or ui.firmware)
+
+    app = QApplication.instance()
+    handler = FileOpenHandler()
+    app.installEventFilter(handler)
+    try:
+        # Before the window is ready: kept until it is.
+        QApplication.sendEvent(app, QFileOpenEvent(str(ui.firmware)))
+        assert ui.window.filepath_box.currentText() == ""
+        handler.set_handler(lambda target: ui.window.present([target]))
+        assert ui.window.filepath_box.currentText() == str(ui.firmware)
+
+        QApplication.sendEvent(app, QFileOpenEvent(QUrl("qmk://https://example.com/my%20fw.hex")))
+        wait_until(lambda: "File saved to" in ui.log())
+        assert downloads == ["https://example.com/my%20fw.hex"]
+    finally:
+        app.removeEventFilter(handler)

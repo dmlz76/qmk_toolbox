@@ -5,6 +5,7 @@ import sys
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from .ui.file_open_handler import FileOpenHandler
 from .ui.main_window import MainWindow
 from .ui.single_instance import SingleInstance
 
@@ -12,6 +13,9 @@ from .ui.single_instance import SingleInstance
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv if argv is None else argv
     app = QApplication(argv)
+    # On macOS, files and qmk: links opened from Finder, the Dock or a browser.
+    file_open_handler = FileOpenHandler(app)
+    app.installEventFilter(file_open_handler)
     app.setApplicationName("QMK Toolbox")
     app.setOrganizationName("QMK")
     app.setDesktopFileName("qmk-toolbox")
@@ -29,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     instance.message_received.connect(window.present)
     if arguments:
         window.set_file_path(arguments[0])
+    file_open_handler.set_handler(lambda target: window.present([target]))
     window.show()
     return app.exec()
 

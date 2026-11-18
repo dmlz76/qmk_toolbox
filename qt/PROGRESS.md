@@ -12,6 +12,7 @@ Plan: [PLAN.md](PLAN.md). Update this file at the end of each working session.
 | 4. HID console and key tester | Done (2026-11-16); both verified on macOS with a real keyboard |
 | 5. Ubuntu work | Done (2026-11-16); `.deb` installed and verified on Ubuntu 26.04 with real keyboards |
 | 6. CI and docs | Done (2026-11-16); CI passed on GitHub for amd64 and arm64 |
+| 7. macOS app | Done (2026-11-17); installed from the `.dmg`, flash, HID console and key tester verified on macOS |
 
 ## Running the app
 
@@ -31,6 +32,16 @@ sudo apt install ./dist/qmk-toolbox_*.deb
 ```
 
 The Maintainer field comes from `DEBFULLNAME`/`DEBEMAIL`, or else git config. Downloads are cached in `build/downloads/`.
+
+## Building the macOS app
+
+From `qt/`, on a Mac:
+
+```sh
+packaging/macos/build-app.sh          # -> dist/QMK-Toolbox-Qt-<version>-<arch>.dmg, for this Mac's architecture
+```
+
+Open the `.dmg` and drag "QMK Toolbox (Qt)" into Applications. Needs only uv; downloads are cached in `build/downloads/`.
 
 ## Running the tests
 
@@ -234,6 +245,34 @@ Licences of the bundled flashers (raised in step 5, checked and decided here):
 - The package only points to that repository. For the GPL-3 tools (teensy_loader_cli, hid_bootloader_cli, mdloader) GPL-3 §6(d) allows source on a third party's server, if the distributor makes sure it stays available. For the GPL-2+ tools (avrdude, dfu-programmer, dfu-util), GPL-2 §3 asks for the source to accompany the binaries, a written offer, or equivalent access "from the same place".
 - The native macOS and Windows apps already bundle builds of the same GPL tools without shipping their source, so the Linux package does what QMK already does.
 - **Decided (2026-11-16): do as the native apps do.** No source archive is attached to releases; `copyright` points to qmk_flashutils at the pinned commit. The more conservative option, if that is ever wanted, is to attach qmk_flashutils at that commit with its submodules to each release next to the packages.
+
+## Step 7 — macOS app (done)
+
+Added 2026-11-17, reversing the plan's earlier "macOS distribution: not planned". On a Mac the equivalent of the Linux package's App Center entry is an app bundle in /Applications (Launchpad, Spotlight, Dock). The Mac App Store is not an option: its sandbox does not allow the USB access and bundled flashers.
+
+- `packaging/macos/build-app.sh` — builds `QMK Toolbox (Qt).app` with PyInstaller and wraps it in a `.dmg` with an Applications link. Python 3.14, Qt and the other dependencies are bundled (macOS has no system PySide6 to depend on, unlike Ubuntu), at the versions pinned with hashes in `packaging/macos/requirements.txt` (regenerate from `requirements.in`, command in that file). The flashers are qmk_flashutils 20260711 for the Mac's architecture, checked against `packaging/macos/SHA256SUMS`, whose values match the SHA-256 digests GitHub lists for the release assets. The icon is made from the native app's asset catalogue.
+- `packaging/macos/qmk-toolbox.spec` — bundle ID `fm.qmk.toolbox.qt` and name "QMK Toolbox (Qt)", so it installs next to the native app (`fm.qmk.toolbox`) without replacing it. Registers `.hex`/`.bin` files with rank "Alternate" (the native app stays the default while it is installed) and the `qmk:` URL scheme; imports the `fm.qmk.hex` type the native app exports, so .hex files stay recognised after that app is removed.
+- `ui/file_open_handler.py` — files opened from Finder or dropped on the Dock icon, and `qmk:` links from a browser, reach a Mac app as Qt FileOpen events rather than arguments; they are now passed to the main window (kept until it exists).
+- `firmware.unwrap_qmk_url` — repairs links that went through Qt: it turns `qmk://https://host/...` into `qmk://https//host/...` (reads "https:" as a host with an empty port).
+- `tests/test_single_instance.py` — the socket path is now under `/tmp`: under pytest's temporary directory it was longer than macOS allows (104 bytes), so three tests failed on macOS (they passed on Linux).
+
+Verified on the development Mac (arm64, macOS 27.2): 120 tests pass. The build takes about 20 s; the app is 90 MB, the `.dmg` 38 MB. In the bundle: all eight flashers are native arm64 and run (avrdude 8.1, dfu-programmer 1.1.0, dfu-util 0.11-dev, mdloader 1.07, wb32-dfu-updater_cli 1.0.0; the other three answered), hidapi and the app's package metadata are present, and no file links to Homebrew. Started headless, the app stayed up and loaded libusb from inside the bundle. `codesign --verify --deep --strict` passes on the ad-hoc signature.
+
+Verified on hardware (2026-11-17, macOS 27.2, arm64): installed from the `.dmg` into Applications next to the native app, and started normally. The log's first line read "QMK Toolbox 0.3.4", so the package metadata is found. The mini-mighty-kbd-wireless (Atmel DFU, ATmega32U4) was flashed with console-enabled firmware using qmk_flashutils' dfu-programmer 1.1.0: erase, program, validate and reset all succeeded, and that time the reset returned by itself (the hang is intermittent). The HID Console window then showed the keyboard's output, so hidapi works from inside the bundle, and the Key Tester worked.
+
+Opening a `.hex` from Finder was verified too. While the native app is installed it stays the default, as intended by the "Alternate" rank, so a double click first opened the native app. After choosing QMK Toolbox (Qt) in the file's Get Info > Open with, a double click selected the file in the Qt app, both when it was already running (in that instance) and when it was not (starting it).
+
+Not verified: dropping a file on the Dock icon (same FileOpen path as Finder).
+
+Also not verified: a `qmk:` link (which app macOS sends it to while both are installed is up to macOS); serial bootloaders; x86_64 Macs; macOS versions other than 27.
+
+Known limitations:
+
+- **Signed ad hoc only.** Fine on the Mac that built it. A copy downloaded from elsewhere (e.g. a CI artifact) would be blocked by Gatekeeper until approved in System Settings; distributing it properly needs a Developer ID signature and notarization. qmk_flashutils' binaries are built against the macOS 10.6 SDK, which PyInstaller warns will cause trouble with the hardened runtime that notarization requires.
+- **Built for one architecture**, the building Mac's; no universal build.
+- **libusb comes from the build Mac's Homebrew**, collected by PyInstaller's pyusb hook (`brew install libusb` is needed to build). It is LGPL-2.1, linked dynamically. The build script fails if libusb, hidapi, the flashers or the data files are missing from the app, or if anything in it links to a library outside the app and macOS (checked against Homebrew's own `dfu-util`, which it flags).
+- **Not built in CI.**
+- The key tester still labels the Mac's Option and Command keys Alt and GUI (deferred in step 4).
 
 ## Background
 

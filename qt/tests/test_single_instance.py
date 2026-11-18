@@ -1,5 +1,7 @@
 import os
+import shutil
 import socket
+import tempfile
 import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -16,8 +18,11 @@ def app():
 
 
 @pytest.fixture
-def name(tmp_path):
-    return str(tmp_path / "toolbox")
+def name():
+    # Not under tmp_path: on macOS that is too long for a socket path (104 bytes at most).
+    directory = tempfile.mkdtemp(prefix="qmk-", dir="/tmp")
+    yield os.path.join(directory, "toolbox")
+    shutil.rmtree(directory, ignore_errors=True)
 
 
 def receive(instance):
